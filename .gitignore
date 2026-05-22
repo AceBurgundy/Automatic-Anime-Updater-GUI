@@ -1,0 +1,23 @@
+# Flutter & Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+dist/
+.idea/
+*.iml
+
+# Python Backend
+backend/env/
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/debug_screenshots/
+backend/.browser_profile/
+backend/models/
+backend/*.db-shm
+backend/*.db-wal
