@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.browser_profile/
+debug_screenshots/
+*.partial
+state.json
+anime_refresher.log
+ignored.json
+*.db
+anime_refresher.db
+errors.html
+error.txt
+.env
+models/*
+!models/.gitkeep
