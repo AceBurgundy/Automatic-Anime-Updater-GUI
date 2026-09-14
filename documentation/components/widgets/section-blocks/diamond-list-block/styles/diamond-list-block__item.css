@@ -1,0 +1,47 @@
+.diamond-list-block__item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    font-family: var(--md-sys-typescale-font-body);
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    color: var(--md-sys-color-on-surface);
+    font-weight: normal;
+}
+
+.diamond-list-block__item,
+.diamond-list-block__item *,
+.diamond-list-block__item span {
+    font-size: inherit;
+}
+
+.diamond-list-block__icon {
+    color: var(--md-sys-color-primary);
+    font-size: 0.875rem;
+    line-height: 1.67;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.diamond-list-block__content {
+    font-size: inherit;
+    line-height: inherit;
+}
+
+.diamond-list-block__prefix {
+    font-weight: 600;
+    color: var(--md-sys-color-on-surface);
+}
+
+/* Tablet Portrait (e.g. Galaxy Tab S9 800x1280, iPad portrait): Bump font size to 1.1rem and line-height to 30px */
+@media (min-width: 601px) and (orientation: portrait) {
+    .diamond-list-block__item {
+        font-size: 1.1rem !important;
+        line-height: 30px !important;
+    }
+
+    .diamond-list-block__icon {
+        font-size: 1rem !important;
+        line-height: 30px !important;
+    }
+}

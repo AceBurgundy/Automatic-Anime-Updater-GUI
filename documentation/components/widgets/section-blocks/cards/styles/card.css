@@ -1,0 +1,305 @@
+/* ------------------------------------------------------------------
+   Card Component Styles
+   ------------------------------------------------------------------
+   Border radius token: 2rem throughout (card root, image container,
+   content pane). The image container uses a negative bottom margin so
+   its lower rounded edge visually overlaps and sits on top of the
+   content pane's upper rounded edge.
+
+   Hover: background-color transitions on the .card root itself,
+   not on the inner content element.
+   ------------------------------------------------------------------ */
+
+:root {
+    --card-radius: 2rem;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--md-sys-color-surface-container-low);
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard);
+}
+
+.card[data-has-link="true"] {
+    cursor: pointer;
+}
+
+/* Hover on the card ROOT — background shifts to surface-container-high */
+.card[data-has-link="true"]:hover,
+.card[data-has-link="true"]:focus-visible {
+    background-color: var(--md-sys-color-surface-container-high);
+}
+
+/* ── Image container ── */
+.card__image-container {
+    width: 100%;
+    height: 300px;
+    background-color: var(--md-sys-color-surface-container-highest);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    position: relative;
+    border-radius: var(--card-radius);
+    margin-bottom: calc(-1 * var(--card-radius));
+    z-index: 1;
+}
+
+/* ImageScale height presets */
+.card__image-container[data-image-scale="small"] {
+    height: 200px;
+}
+
+.card__image-container[data-image-scale="medium"] {
+    height: 300px;
+}
+
+/* ── Image inside the container ── */
+.card__image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/*
+ * Shrink variant: image draws at 90% of the container with breathing room
+ * on all sides, using contain so the full artwork is always visible.
+ */
+.card__image--shrink {
+    width: 90% !important;
+    height: 90% !important;
+    object-fit: contain !important;
+}
+
+/* ── Content pane ── */
+.card__content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    /* Extra top padding compensates for 2rem image overlap */
+    padding: 3.5rem 1.5rem 1.5rem;
+    gap: 0.5rem;
+    background-color: transparent;
+    border-radius: var(--card-radius);
+    box-sizing: border-box;
+}
+
+/* ── Typography inside cards ── */
+.card__label,
+.card__date {
+    font-family: var(--md-sys-typescale-font-label);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--md-sys-color-primary);
+    margin-bottom: 0.125rem;
+}
+
+.card__title {
+    font-family: var(--md-sys-typescale-font-title);
+    font-size: 1.5rem;
+    line-height: 1.3;
+    color: var(--md-sys-color-on-surface);
+    margin: 0;
+}
+
+.card__description {
+    font-family: var(--md-sys-typescale-font-body);
+    font-size: 1rem;
+    line-height: 1.55;
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0;
+}
+
+/* ── Row variant (horizontal layout) ── */
+.card--row {
+    flex-direction: row;
+}
+
+.card--row .card__image-container {
+    width: 48%;
+    min-width: 48%;
+    height: auto;
+    min-height: 360px;
+    margin-bottom: 0;
+}
+
+.card--row .card__content {
+    width: 52%;
+    justify-content: center;
+    padding: 2.25rem;
+    gap: 0.75rem;
+}
+
+.card--row .card__title {
+    font-size: 1.625rem;
+}
+
+.card--row .card__description {
+    font-size: 1.0625rem;
+}
+
+/* ── Image loading: shimmer skeleton ── */
+@keyframes cardImageShimmer {
+    0%   { background-position: 200% center; }
+    100% { background-position: -200% center; }
+}
+
+.card__image-container[data-image-loading="true"] {
+    background: linear-gradient(
+        105deg,
+        var(--md-sys-color-surface-container-highest) 0%,
+        var(--md-sys-color-surface-container-high)    30%,
+        var(--md-sys-color-surface-container-highest) 50%,
+        var(--md-sys-color-surface-container-high)    70%,
+        var(--md-sys-color-surface-container-highest) 100%
+    );
+    background-size: 300% 100%;
+    animation: cardImageShimmer 1.6s ease-in-out infinite;
+}
+
+/* ── Image loading: blur-up progressive reveal ── */
+.card__image--loading-state {
+    opacity: 0;
+    filter: blur(12px);
+    transform: scale(1.04);
+    transition:
+        opacity   0.45s var(--md-sys-motion-easing-standard),
+        filter    0.45s var(--md-sys-motion-easing-standard),
+        transform 0.45s var(--md-sys-motion-easing-standard);
+    will-change: opacity, filter, transform;
+}
+
+.card__image--loaded {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+}
+
+/* ── Responsive — Tablet landscape (≤1280px, landscape, taller than 550px) ── */
+@media (max-width: 1280px) and (orientation: landscape) and (min-height: 551px) {
+    :root {
+        --card-radius: 1.75rem;
+    }
+
+    .card__image-container {
+        height: 260px;
+    }
+
+    .card__image-container[data-image-scale="small"] {
+        height: 180px;
+    }
+
+    .card__image-container[data-image-scale="medium"] {
+        height: 260px;
+    }
+
+    .card__content {
+        padding: 3.25rem 1.5rem 1.5rem;
+    }
+}
+
+/* ── Responsive — Mobile / portrait / landscape-short ── */
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+    :root {
+        --card-radius: 1.5rem;
+    }
+
+    .card--row {
+        flex-direction: column !important;
+    }
+
+    .card--row .card__image-container {
+        width: 100% !important;
+        min-width: 100% !important;
+        height: 220px !important;
+        min-height: 220px !important;
+        margin-bottom: calc(-1 * var(--card-radius)) !important;
+    }
+
+    .card--row .card__content {
+        width: 100% !important;
+        padding: 3rem 1.25rem 1.25rem !important;
+    }
+
+    .card__content {
+        padding: 2.75rem 1.25rem 1.25rem;
+    }
+
+    .card__image-container {
+        height: 200px;
+    }
+
+    .card__image-container[data-image-scale="small"] {
+        height: 160px !important;
+    }
+
+    .card__image-container[data-image-scale="medium"] {
+        height: 200px !important;
+    }
+
+    .card__title {
+        font-size: 1.25rem;
+    }
+
+    .card__description {
+        font-size: 0.9375rem;
+    }
+}
+
+/* ── Responsive — Tablet portrait (≥601px, portrait) ── */
+@media (min-width: 601px) and (orientation: portrait) {
+    :root {
+        --card-radius: 1.75rem;
+    }
+
+    .card__image-container {
+        height: 240px;
+    }
+
+    .card__image-container[data-image-scale="small"] {
+        height: 180px !important;
+    }
+
+    .card__image-container[data-image-scale="medium"] {
+        height: 240px !important;
+    }
+
+    .card__content {
+        padding: 3.25rem 1.5rem 1.5rem;
+    }
+}
+
+/* ── 4K / ultrawide ── */
+@media (min-width: 3840px) {
+    :root {
+        --card-radius: 2.5rem;
+    }
+
+    .card__image-container {
+        height: 420px;
+    }
+
+    .card__image-container[data-image-scale="small"] {
+        height: 280px !important;
+    }
+
+    .card__image-container[data-image-scale="medium"] {
+        height: 420px !important;
+    }
+
+    .card__content {
+        padding: 4rem 2rem 2rem;
+    }
+}

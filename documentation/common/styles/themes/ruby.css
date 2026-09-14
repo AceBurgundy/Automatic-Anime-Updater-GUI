@@ -1,0 +1,54 @@
+/* Ruby / Crimson Palette */
+[data-palette="ruby"] {
+  --md-sys-color-primary: #9C2A44;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #FFD9DF;
+  --md-sys-color-on-primary-container: #3F0013;
+  --md-sys-color-secondary: #75565C;
+  --md-sys-color-on-secondary: #FFFFFF;
+  --md-sys-color-secondary-container: #FFD9DF;
+  --md-sys-color-on-secondary-container: #2B151A;
+  --md-sys-color-tertiary: #7A5732;
+  --md-sys-color-on-tertiary: #FFFFFF;
+  --md-sys-color-tertiary-container: #FFDCBE;
+  --md-sys-color-on-tertiary-container: #2C1700;
+  --md-sys-color-background: #F0E8E9;
+  --md-sys-color-on-background: #22191B;
+  --md-sys-color-surface: #F0E8E9;
+  --md-sys-color-on-surface: #22191B;
+  --md-sys-color-surface-variant: #F3DDE0;
+  --md-sys-color-on-surface-variant: #524345;
+  --md-sys-color-surface-container-lowest: #EAE1E2;
+  --md-sys-color-surface-container-low: #E5DBDC;
+  --md-sys-color-surface-container: #DFD5D6;
+  --md-sys-color-surface-container-high: #D9CFD0;
+  --md-sys-color-surface-container-highest: #D3C9CA;
+  --md-sys-gradient-hero: linear-gradient(135deg, #f48fb1 0%, #ec407a 35%, #ff7043 70%, #ab47bc 100%);
+}
+
+[data-theme="dark"][data-palette="ruby"] {
+  --md-sys-color-primary: #FFB2BF;
+  --md-sys-color-on-primary: #5F0020;
+  --md-sys-color-primary-container: #7E102F;
+  --md-sys-color-on-primary-container: #FFD9DF;
+  --md-sys-color-secondary: #E5BDC3;
+  --md-sys-color-on-secondary: #43292E;
+  --md-sys-color-secondary-container: #5B3F44;
+  --md-sys-color-on-secondary-container: #FFD9DF;
+  --md-sys-color-tertiary: #ECC096;
+  --md-sys-color-on-tertiary: #452B09;
+  --md-sys-color-tertiary-container: #5F3E1C;
+  --md-sys-color-on-tertiary-container: #FFDCBE;
+  --md-sys-color-background: #191113;
+  --md-sys-color-on-background: #EFE0E2;
+  --md-sys-color-surface: #191113;
+  --md-sys-color-on-surface: #EFE0E2;
+  --md-sys-color-surface-variant: #524345;
+  --md-sys-color-on-surface-variant: #D6C2C4;
+  --md-sys-color-surface-container-lowest: #140C0E;
+  --md-sys-color-surface-container-low: #22191B;
+  --md-sys-color-surface-container: #261D1F;
+  --md-sys-color-surface-container-high: #312829;
+  --md-sys-color-surface-container-highest: #3C3234;
+  --md-sys-gradient-hero: linear-gradient(135deg, #ff1744 0%, #d500f9 45%, #ff4081 80%, #ff5252 100%);
+}

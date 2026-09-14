@@ -1,0 +1,153 @@
+/* Banner Information Styles (Legacy reference: .split-asset .primary-container) */
+.banner-information {
+  flex: 1.15;
+  padding: 3.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background-color: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+.banner-information__wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.375rem;
+}
+
+.banner-information__title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.banner-information__title {
+  font-family: var(--md-sys-typescale-font-display);
+  font-size: 5rem;
+  line-height: 1.1;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+  color: var(--md-sys-color-on-surface);
+  margin: 0 0 0.875rem 0;
+  transition: font-size 0.2s ease, line-height 0.2s ease;
+}
+
+.banner-information__title--compact {
+  font-size: 3rem;
+  line-height: 1.15;
+}
+
+.banner-information__description {
+  font-family: var(--md-sys-typescale-font-body);
+  font-size: 1.25rem;
+  line-height: 1.4;
+  color: var(--md-sys-color-on-surface-variant);
+  max-width: 33.75rem;
+  margin: 0;
+}
+
+.banner-information__badges-container {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Phone Portrait (<= 600px portrait): Compact stacked */
+@media (max-width: 600px) and (orientation: portrait) {
+  .banner-information {
+    width: 100%;
+    max-width: 100%;
+    flex: none;
+    padding: 1.5rem 1.125rem;
+    border-radius: var(--md-sys-shape-corner-extra-large);
+  }
+
+  .banner-information__title {
+    font-size: 2.2rem;
+    line-height: 2.125rem;
+  }
+
+  .banner-information__title--compact {
+    font-size: 1.8rem;
+    line-height: 1.75rem;
+  }
+
+  .banner-information__description {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
+
+/* Tablet Portrait (e.g. Galaxy Tab S9 800x1280, iPad portrait): Row layout */
+@media (min-width: 601px) and (max-width: 1024px) and (orientation: portrait) {
+  .banner-information {
+    flex: 1.15;
+    width: auto;
+    max-width: none;
+    padding: 2.25rem 2rem;
+    border-radius: var(--md-sys-shape-corner-extra-large);
+  }
+
+  .banner-information__title {
+    font-size: 2.75rem;
+    line-height: 1.12;
+  }
+
+  .banner-information__title--compact {
+    font-size: 2.1rem;
+    line-height: 1.15;
+  }
+
+  .banner-information__description {
+    font-size: 1.0625rem;
+    line-height: 1.45;
+    max-width: none;
+  }
+}
+
+/* Phone Landscape: Compact row sizing */
+@media (orientation: landscape) and (max-height: 550px) {
+  .banner-information {
+    flex: 1.15;
+    width: auto;
+    max-width: none;
+    padding: 1.25rem 1.5rem;
+    border-radius: var(--md-sys-shape-corner-extra-large);
+  }
+
+  .banner-information__title {
+    font-size: 2rem;
+    line-height: 1.15;
+    margin-bottom: 0.5rem;
+  }
+
+  .banner-information__title--compact {
+    font-size: 1.6rem;
+    line-height: 1.2;
+  }
+
+  .banner-information__description {
+    font-size: 0.9375rem;
+    line-height: 1.35;
+  }
+}
+
+/* Tablet Landscape: Comfortable row sizing */
+@media (max-width: 1280px) and (orientation: landscape) and (min-height: 551px) {
+  .banner-information {
+    flex: 1.15;
+    padding: 2.25rem 2rem;
+  }
+
+  .banner-information__title {
+    font-size: 3.25rem;
+    line-height: 1.1;
+  }
+
+  .banner-information__title--compact {
+    font-size: 2.25rem;
+    line-height: 1.15;
+  }
+}

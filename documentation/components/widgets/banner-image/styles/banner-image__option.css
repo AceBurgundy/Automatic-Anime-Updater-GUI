@@ -1,0 +1,52 @@
+/* Banner Image Option Stylesheet */
+.banner-image__option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--md-sys-shape-corner-medium);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.banner-image__option:hover {
+  background-color: var(--md-sys-color-surface-container-high);
+}
+
+.banner-image__radio {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  border: 2px solid var(--md-sys-color-outline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.2s ease;
+}
+
+.banner-image__option-label {
+  font-family: var(--md-sys-typescale-font-body);
+  font-size: 0.875rem;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: color 0.2s ease;
+}
+
+.banner-image__option--selected .banner-image__radio {
+  border-color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-primary);
+}
+
+.banner-image__option--selected .banner-image__radio::after {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background-color: var(--md-sys-color-on-primary);
+}
+
+.banner-image__option--selected .banner-image__option-label {
+  color: var(--md-sys-color-on-surface);
+  font-weight: 500;
+}

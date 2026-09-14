@@ -1,0 +1,54 @@
+/* Teal / Aqua Palette */
+[data-palette="teal"] {
+  --md-sys-color-primary: #006A60;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #73F8E7;
+  --md-sys-color-on-primary-container: #00201C;
+  --md-sys-color-secondary: #4A635F;
+  --md-sys-color-on-secondary: #FFFFFF;
+  --md-sys-color-secondary-container: #CCE8E3;
+  --md-sys-color-on-secondary-container: #05201C;
+  --md-sys-color-tertiary: #46617A;
+  --md-sys-color-on-tertiary: #FFFFFF;
+  --md-sys-color-tertiary-container: #CEE5FF;
+  --md-sys-color-on-tertiary-container: #001D33;
+  --md-sys-color-background: #E4F1EE;
+  --md-sys-color-on-background: #161D1B;
+  --md-sys-color-surface: #E4F1EE;
+  --md-sys-color-on-surface: #161D1B;
+  --md-sys-color-surface-variant: #DAE5E1;
+  --md-sys-color-on-surface-variant: #3F4946;
+  --md-sys-color-surface-container-lowest: #DDEAE6;
+  --md-sys-color-surface-container-low: #D9E6E2;
+  --md-sys-color-surface-container: #D3E0DC;
+  --md-sys-color-surface-container-high: #CDDAD6;
+  --md-sys-color-surface-container-highest: #C7D4D0;
+  --md-sys-gradient-hero: linear-gradient(135deg, #4db6ac 0%, #009688 35%, #26a69a 70%, #00897b 100%);
+}
+
+[data-theme="dark"][data-palette="teal"] {
+  --md-sys-color-primary: #53DBCB;
+  --md-sys-color-on-primary: #003731;
+  --md-sys-color-primary-container: #005048;
+  --md-sys-color-on-primary-container: #73F8E7;
+  --md-sys-color-secondary: #B1CCC7;
+  --md-sys-color-on-secondary: #1C3531;
+  --md-sys-color-secondary-container: #324B47;
+  --md-sys-color-on-secondary-container: #CCE8E3;
+  --md-sys-color-tertiary: #AEC9E6;
+  --md-sys-color-on-tertiary: #16334A;
+  --md-sys-color-tertiary-container: #2E4961;
+  --md-sys-color-on-tertiary-container: #CEE5FF;
+  --md-sys-color-background: #0E1513;
+  --md-sys-color-on-background: #DDE4E1;
+  --md-sys-color-surface: #0E1513;
+  --md-sys-color-on-surface: #DDE4E1;
+  --md-sys-color-surface-variant: #3F4946;
+  --md-sys-color-on-surface-variant: #BEC9C5;
+  --md-sys-color-surface-container-lowest: #09100E;
+  --md-sys-color-surface-container-low: #161D1B;
+  --md-sys-color-surface-container: #1A211F;
+  --md-sys-color-surface-container-high: #242C2A;
+  --md-sys-color-surface-container-highest: #2F3634;
+  --md-sys-gradient-hero: linear-gradient(135deg, #1de9b6 0%, #00b0ff 40%, #00e676 75%, #00b4d8 100%);
+}

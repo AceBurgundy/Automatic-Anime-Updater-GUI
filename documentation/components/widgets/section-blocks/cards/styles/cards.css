@@ -1,0 +1,163 @@
+/* ------------------------------------------------------------------
+   Cards Section Component Styles
+   ------------------------------------------------------------------ */
+
+.cards {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 1.5rem;
+    box-sizing: border-box;
+    margin: 1.5rem 0;
+}
+
+.cards__header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.cards__heading {
+    font-family: var(--md-sys-typescale-font-headline);
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin: 0;
+    padding: 0;
+}
+
+.cards__heading--level-2 {
+    font-size: 3rem;
+    letter-spacing: -0.01875rem;
+    line-height: 1;
+    margin-top: 5rem;
+    padding-bottom: 0.375rem;
+}
+
+.cards__heading--level-3 {
+    font-size: 2rem;
+    letter-spacing: -0.0125rem;
+    line-height: 1.2;
+    margin-top: 3rem;
+    padding-bottom: 0.25rem;
+}
+
+/* Dashboard scale — large heading/description for the landing page */
+.cards__heading--for-dashboard.cards__heading--level-2 {
+    font-family: var(--md-sys-typescale-font-display);
+    font-size: 3rem;
+    letter-spacing: -0.6px;
+    line-height: 1.15;
+    margin-top: 0;
+    padding-bottom: 0;
+}
+
+.cards__heading--for-dashboard.cards__heading--level-3 {
+    font-family: var(--md-sys-typescale-font-display);
+    font-size: 2.25rem;
+    letter-spacing: -0.6px;
+    line-height: 1.2;
+    margin-top: 0;
+    padding-bottom: 0;
+}
+
+.cards__description {
+    font-family: var(--md-sys-typescale-font-body);
+    font-size: 0.96875rem;
+    line-height: 1.74;
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0;
+}
+
+.cards__description--for-dashboard {
+    font-size: 1.25rem;
+    line-height: 1.4;
+    max-width: 33.75rem;
+}
+
+.cards__grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.cards__row-single {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+    gap: 0.5rem;
+}
+
+.cards__row-duo {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    width: 100%;
+    gap: 0.5rem;
+}
+
+.cards__row-trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    gap: 0.5rem;
+}
+
+/* Responsive Breakdown */
+@media (max-width: 1280px) and (orientation: landscape) and (min-height: 551px) {
+    .cards__heading--level-2 {
+        font-size: 2.75rem;
+        line-height: 1.15;
+    }
+
+    .cards__description--for-dashboard {
+        font-size: 1.125rem;
+        line-height: 1.45;
+    }
+}
+
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+    .cards {
+        gap: 1.25rem;
+        margin: 1rem 0;
+    }
+
+    .cards__heading--level-2 {
+        font-size: 2.2rem;
+        line-height: 2.125rem;
+    }
+
+    .cards__heading--level-3 {
+        font-size: 1.8rem;
+        line-height: 1.75rem;
+    }
+
+    .cards__heading--for-dashboard.cards__heading--level-2 {
+        font-size: 2.2rem;
+        line-height: 1.2;
+    }
+
+    .cards__heading--for-dashboard.cards__heading--level-3 {
+        font-size: 1.8rem;
+        line-height: 1.2;
+    }
+
+    .cards__description--for-dashboard {
+        font-size: 1rem;
+        line-height: 1.5rem;
+    }
+
+    .cards__grid {
+        gap: 0.5rem;
+    }
+
+    .cards__row-single,
+    .cards__row-duo,
+    .cards__row-trio {
+        grid-template-columns: 1fr !important;
+        gap: 0.5rem !important;
+    }
+}

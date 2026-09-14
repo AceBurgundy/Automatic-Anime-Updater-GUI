@@ -1,0 +1,127 @@
+.paragraph-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.paragraph-block__heading {
+    font-family: var(--md-sys-typescale-font-headline);
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin: 0;
+    padding: 0;
+}
+
+.paragraph-block__heading--level-2 {
+    font-size: 3rem;
+    letter-spacing: -0.01875rem;
+    line-height: 1;
+    margin-top: 5rem;
+    padding-bottom: 0.375rem;
+}
+
+.paragraph-block__heading--level-3 {
+    font-size: 2rem;
+    letter-spacing: -0.0125rem;
+    line-height: 1.2;
+    margin-top: 3rem;
+    padding-bottom: 0.25rem;
+}
+
+/* Dashboard scale — large heading for the landing page */
+.paragraph-block__heading--for-dashboard.paragraph-block__heading--level-2 {
+    font-family: var(--md-sys-typescale-font-display);
+    font-size: 3rem;
+    letter-spacing: -0.6px;
+    line-height: 1.15;
+    margin-top: 0;
+    padding-bottom: 0;
+}
+
+.paragraph-block__heading--for-dashboard.paragraph-block__heading--level-3 {
+    font-family: var(--md-sys-typescale-font-display);
+    font-size: 2.25rem;
+    letter-spacing: -0.6px;
+    line-height: 1.2;
+    margin-top: 0;
+    padding-bottom: 0;
+}
+
+.paragraph-block__text {
+    font-family: var(--md-sys-typescale-font-body);
+    font-size: 0.96875rem;
+    line-height: 1.74;
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0;
+    padding: 0;
+}
+
+.paragraph-block__text--desktop {
+    display: block;
+}
+
+.paragraph-block__mobile-group {
+    display: none;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+    .paragraph-block__heading--level-2 {
+        font-size: 3rem !important;
+        line-height: 1.05 !important;
+        margin-top: 4.25rem;
+        gap: 10px;
+        word-break: break-word;
+    }
+
+    .paragraph-block__heading--level-3 {
+        font-size: 2rem !important;
+        line-height: 1.2 !important;
+        margin-top: 3.25rem;
+        gap: 8px;
+        word-break: break-word;
+    }
+
+    .paragraph-block__text {
+        font-size: 0.9rem !important;
+        line-height: 25px;
+    }
+
+    .paragraph-block__text--desktop {
+        display: none !important;
+    }
+
+    .paragraph-block__mobile-group {
+        display: flex !important;
+        flex-direction: column;
+        gap: 16px;
+    }
+}
+
+/* Tablet Portrait (e.g. Galaxy Tab S9 800x1280, iPad portrait): 2rem padding-right, larger typography */
+@media (min-width: 601px) and (orientation: portrait) {
+    .paragraph-block {
+        padding-right: 2rem;
+    }
+
+    .paragraph-block__heading--level-2 {
+        font-size: 4rem !important;
+        line-height: 1.05 !important;
+    }
+
+    .paragraph-block__heading--level-3 {
+        font-size: 3rem !important;
+        line-height: 1.15 !important;
+    }
+
+    .paragraph-block__text {
+        font-size: 1.1rem !important;
+        line-height: 30px !important;
+    }
+}

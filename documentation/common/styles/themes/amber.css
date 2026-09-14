@@ -1,0 +1,54 @@
+/* Amber / Gold Palette */
+[data-palette="amber"] {
+  --md-sys-color-primary: #7B5800;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #FFDF9D;
+  --md-sys-color-on-primary-container: #261900;
+  --md-sys-color-secondary: #6B5D3F;
+  --md-sys-color-on-secondary: #FFFFFF;
+  --md-sys-color-secondary-container: #F5E1BB;
+  --md-sys-color-on-secondary-container: #241A04;
+  --md-sys-color-tertiary: #496547;
+  --md-sys-color-on-tertiary: #FFFFFF;
+  --md-sys-color-tertiary-container: #CBEBC4;
+  --md-sys-color-on-tertiary-container: #072109;
+  --md-sys-color-background: #F0EAE1;
+  --md-sys-color-on-background: #201B12;
+  --md-sys-color-surface: #F0EAE1;
+  --md-sys-color-on-surface: #201B12;
+  --md-sys-color-surface-variant: #ECE1CF;
+  --md-sys-color-on-surface-variant: #4D4639;
+  --md-sys-color-surface-container-lowest: #EAE3DA;
+  --md-sys-color-surface-container-low: #E5DED5;
+  --md-sys-color-surface-container: #DFD8CF;
+  --md-sys-color-surface-container-high: #D9D2C9;
+  --md-sys-color-surface-container-highest: #D3CCC3;
+  --md-sys-gradient-hero: linear-gradient(135deg, #ffd54f 0%, #ffb300 35%, #ff8f00 70%, #ff7043 100%);
+}
+
+[data-theme="dark"][data-palette="amber"] {
+  --md-sys-color-primary: #F9BD38;
+  --md-sys-color-on-primary: #412D00;
+  --md-sys-color-primary-container: #5C4200;
+  --md-sys-color-on-primary-container: #FFDF9D;
+  --md-sys-color-secondary: #D8C5A0;
+  --md-sys-color-on-secondary: #3B2F15;
+  --md-sys-color-secondary-container: #53462A;
+  --md-sys-color-on-secondary-container: #F5E1BB;
+  --md-sys-color-tertiary: #AFCFA9;
+  --md-sys-color-on-tertiary: #1C361C;
+  --md-sys-color-tertiary-container: #324D31;
+  --md-sys-color-on-tertiary-container: #CBEBC4;
+  --md-sys-color-background: #17130B;
+  --md-sys-color-on-background: #EAE1D6;
+  --md-sys-color-surface: #17130B;
+  --md-sys-color-on-surface: #EAE1D6;
+  --md-sys-color-surface-variant: #4D4639;
+  --md-sys-color-on-surface-variant: #D0C5B4;
+  --md-sys-color-surface-container-lowest: #120E07;
+  --md-sys-color-surface-container-low: #201B12;
+  --md-sys-color-surface-container: #241F16;
+  --md-sys-color-surface-container-high: #2F2A20;
+  --md-sys-color-surface-container-highest: #3A342A;
+  --md-sys-gradient-hero: linear-gradient(135deg, #ffab00 0%, #ff6d00 40%, #ffd600 75%, #ff9100 100%);
+}

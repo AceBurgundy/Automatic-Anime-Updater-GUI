@@ -1,0 +1,38 @@
+/* Common Design Tokens (Shapes, Elevation, Typography, and Dimensions) */
+:root {
+  /* Error Tokens */
+  --md-sys-color-error: #B3261E;
+  --md-sys-color-on-error: #FFFFFF;
+  --md-sys-color-error-container: #F9DEDC;
+  --md-sys-color-on-error-container: #410E0B;
+
+  /* Shape Tokens */
+  --md-sys-shape-corner-extra-small: 0.25rem;
+  --md-sys-shape-corner-small: 0.5rem;
+  --md-sys-shape-corner-medium: 0.75rem;
+  --md-sys-shape-corner-large: 1rem;
+  --md-sys-shape-corner-extra-large: 1.75rem;
+  --md-sys-shape-corner-full: 9999px;
+
+  /* Layout Dimensions */
+  --sidebar-width: 16.875rem;
+  --content-pane-width: 68%;
+  --table-of-contents-rail-width: 18%;
+  --toc-rail-width: 18%;
+  --layout-gap: 3rem;
+
+  /* Typography Families */
+  --md-sys-typescale-font-display: 'Google Sans', sans-serif;
+  --md-sys-typescale-font-headline: 'Google Sans', sans-serif;
+  --md-sys-typescale-font-title: 'Google Sans', sans-serif;
+  --md-sys-typescale-font-body: 'Google Sans Text', 'Roboto', sans-serif;
+  --md-sys-typescale-font-label: 'Google Sans Text', 'Roboto', sans-serif;
+  --md-sys-typescale-font-code: 'Google Sans Code Variable', 'Google Sans Code', 'Roboto Mono', monospace;
+
+  /* Transitions */
+  --md-sys-motion-duration-short: 0.15s;
+  --md-sys-motion-duration-medium: 0.25s;
+  --md-sys-motion-duration-long: 0.4s;
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+}

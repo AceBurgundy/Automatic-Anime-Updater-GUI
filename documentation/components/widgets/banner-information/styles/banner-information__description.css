@@ -1,0 +1,33 @@
+/* Old class reference: .primary-container .description / .split-asset .title .description */
+.banner-information__description {
+  font-family: var(--md-sys-typescale-font-body);
+  font-size: 1.25rem;
+  line-height: 1.4;
+  color: var(--md-sys-color-on-surface-variant);
+  max-width: 33.75rem;
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* Fluid root scale responsiveness */
+@media (min-width: 1920px) {
+  .banner-information__description {
+    font-size: 1.375rem;
+    max-width: 40rem;
+  }
+}
+
+/* Tablet & Mobile Breakpoints */
+@media (max-width: 1024px) {
+  .banner-information__description {
+    font-size: 1.125rem;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .banner-information__description {
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+}

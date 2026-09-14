@@ -1,0 +1,41 @@
+/* Page Navigation Container Styles */
+.page-navigation {
+  display: flex;
+  width: 100%;
+  margin-top: 3rem;
+  box-sizing: border-box;
+}
+
+.page-navigation__container {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  width: 100%;
+}
+
+/* Fluid root scale responsiveness */
+@media (min-width: 1920px) {
+  .page-navigation {
+    margin-top: 4rem;
+  }
+
+  .page-navigation__container {
+    gap: 1.5rem;
+  }
+}
+
+/* Responsive Tablet & Mobile Breakpoints */
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+  .page-navigation {
+    margin-top: 2.5rem;
+    margin-left: -1.5rem;
+    margin-right: -1.5rem;
+    margin-bottom: 0;
+    width: calc(100% + 3rem);
+  }
+
+  .page-navigation__container {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}

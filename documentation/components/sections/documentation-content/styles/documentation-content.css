@@ -1,0 +1,232 @@
+.documentation-content {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.documentation-content__tabs-header {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    background-color: var(--md-sys-color-background);
+    padding: 0 0 1rem 0;
+    margin: 0;
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    transition: all 0.3s cubic-bezier(0.2, 0, 0, 1);
+    box-sizing: border-box;
+}
+
+/* Opaque top cover masking scrolled content only when tabs header is stuck at the viewport top */
+.documentation-content__tabs-header::before {
+    content: "";
+    position: absolute;
+    top: -0.625rem;
+    left: 0;
+    right: 0;
+    height: 0.625rem;
+    background-color: var(--md-sys-color-background);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.documentation-content__tabs-header.is-stuck::before {
+    opacity: 1;
+}
+
+.documentation-content__tabs-header.is-stuck {
+    padding: 0 2.25rem 1rem 2.25rem;
+}
+
+.documentation-content__tabs-header.is-stuck .tabs__track {
+    max-width: var(--content-pane-width);
+    margin-right: calc(var(--table-of-contents-rail-width) + var(--layout-gap));
+}
+
+.documentation-content__tabs-header.is-stuck .tabs__item {
+    height: 3.75rem;
+}
+
+.documentation-content__body {
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem 2.25rem 8.75rem;
+    gap: var(--layout-gap);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.documentation-content__main-pane {
+    width: var(--content-pane-width);
+    max-width: var(--content-pane-width);
+    flex: 0 0 var(--content-pane-width);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+}
+
+/* Modifier: Landing & full-width pages without Table of Contents rail */
+.documentation-content--no-toc .documentation-content__body {
+    padding: 1rem 2.25rem 8.75rem;
+    justify-content: center;
+}
+
+.documentation-content--no-toc .documentation-content__main-pane {
+    width: var(--content-pane-width);
+    max-width: var(--content-pane-width);
+    flex: 0 0 var(--content-pane-width);
+    margin: 0 auto;
+}
+
+.documentation-content--no-toc .documentation-content__subsection {
+    padding-right: 0;
+}
+
+.documentation-content--no-toc .documentation-content__table-of-contents-pane {
+    display: none !important;
+}
+
+/* Modifier: Pages without Tabs header */
+.documentation-content--no-tabs .documentation-content__tabs-header {
+    display: none !important;
+}
+
+.documentation-content__panel {
+    display: none;
+    flex-direction: column;
+    gap: 2.25rem;
+    animation: fadeInAnimation 0.2s ease;
+}
+
+.documentation-content__panel--active {
+    display: flex;
+}
+
+@keyframes fadeInAnimation {
+    from {
+        opacity: 0;
+        transform: translateY(0.25rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.documentation-content__subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    padding-right: 3rem;
+}
+
+.documentation-content__table-of-contents-pane {
+    width: var(--table-of-contents-rail-width);
+    max-width: var(--table-of-contents-rail-width);
+    flex: 0 0 var(--table-of-contents-rail-width);
+    min-width: 0;
+    position: sticky;
+    top: 5.625rem;
+    height: fit-content;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+}
+
+@media (max-width: 1280px) {
+    .documentation-content__body {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        padding: 56px 2rem 100px;
+        gap: 56px;
+        width: 100%;
+    }
+
+    .documentation-content__main-pane {
+        width: 100%;
+        max-width: 100%;
+        flex: none;
+        margin-right: 0 !important;
+    }
+
+    .documentation-content__subsection {
+        padding-right: 0;
+    }
+
+    .documentation-content__table-of-contents-pane {
+        display: flex !important;
+        flex-direction: column;
+        order: -1;
+        width: 100%;
+        max-width: 100%;
+        flex: none;
+        position: static;
+        margin: 0;
+        padding: 0 0.4rem;
+        gap: 20px;
+        height: auto;
+    }
+
+    .documentation-content__tabs-header.is-stuck {
+        padding: 0 0 16px 0;
+    }
+
+    .documentation-content__tabs-header.is-stuck .tabs__track {
+        max-width: 100%;
+        margin-right: 0 !important;
+    }
+}
+
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+    .documentation-content__tabs-header {
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        padding: 8px 0.5rem 0;
+        position: relative;
+        top: 0;
+    }
+
+    .documentation-content__tabs-header.is-stuck {
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        padding: 8px 0.5rem 0 !important;
+    }
+
+    .documentation-content__body {
+        padding: 56px 2rem 0.5rem;
+        gap: 48px;
+    }
+
+    .documentation-content__subsection {
+        gap: 2.25rem;
+    }
+
+    .documentation-content__subsection > div:first-child .paragraph-block__heading,
+    .documentation-content__subsection > div:first-child .diamond-list-block__heading,
+    .documentation-content__subsection > div:first-child .code-block__heading,
+    .documentation-content__subsection > div:first-child .table-block__heading,
+    .documentation-content__subsection > div:first-child .image-block__heading {
+        margin-top: 0 !important;
+    }
+}
+
+@media (min-width: 601px) and (orientation: portrait) {
+    .documentation-content__tabs-header,
+    .documentation-content__tabs-header.is-stuck {
+        padding: 8px 0.75rem 0 !important;
+    }
+}
+
+@media (min-width: 3840px) {
+    .documentation-content__subsection {
+        padding-right: 0;
+    }
+}

@@ -1,0 +1,77 @@
+/* Main SPA Application Root Stylesheet */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.app-root {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: var(--md-sys-color-background);
+  color: var(--md-sys-color-on-surface);
+  position: relative;
+  box-sizing: border-box;
+  padding: 0 0.75rem 0.75rem 0;
+  gap: 0.5rem;
+}
+
+.app-root__viewport {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--md-sys-color-background);
+  scroll-behavior: smooth;
+  padding-top: 0.625rem;
+  position: relative;
+  scrollbar-width: thin;
+}
+
+.app-root__backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 950;
+  opacity: 0;
+  transition: opacity 0.3s cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
+}
+
+.app-root__backdrop--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Mobile & Portrait Responsive Adjustments */
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+  .app-root {
+    padding: 0;
+    gap: 0;
+    flex-direction: column;
+  }
+
+  .app-root__viewport {
+    padding-top: 56px; /* Space for fixed TopBar */
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .app-root__backdrop {
+    display: block;
+  }
+}
+
+@media (min-width: 601px) and (orientation: portrait) {
+  .app-root__viewport {
+    padding-top: 4rem; /* Account for 4rem (64px) top-bar height */
+  }
+}

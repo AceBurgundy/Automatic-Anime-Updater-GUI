@@ -1,0 +1,108 @@
+/* Tab Navigation Bar Container Styles (Legacy reference: .navigation-container / .tabbed-navigation) */
+.tabs {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.tabs__track {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background-color: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-sys-shape-corner-full);
+  gap: 0.25rem;
+  transition: max-width 0.3s cubic-bezier(0.2, 0, 0, 1), margin-right 0.3s cubic-bezier(0.2, 0, 0, 1);
+  box-sizing: border-box;
+}
+
+/* Hidden by default on desktop landscape screens */
+.tabs__carousel-button {
+  display: none !important;
+}
+
+/* Mobile & Portrait Responsive Styles (Legacy reference: .tab-carousel-btn) */
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+  .tabs {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    height: 80px !important;
+    min-height: 80px !important;
+    max-height: 80px !important;
+    box-sizing: border-box;
+  }
+
+  .tabs__carousel-button {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 57px !important;
+    min-width: 57px !important;
+    max-width: 57px !important;
+    height: 80px !important;
+    min-height: 80px !important;
+    max-height: 80px !important;
+    flex-shrink: 0;
+    border-radius: var(--md-sys-shape-corner-full);
+    background-color: var(--md-sys-color-surface-container-low);
+    color: var(--md-sys-color-on-surface);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    border: none !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
+
+  .tabs__carousel-button:hover,
+  .tabs__carousel-button:active {
+    background-color: var(--md-sys-color-surface-container);
+    filter: brightness(0.95);
+    color: var(--md-sys-color-on-surface);
+  }
+
+  .tabs__carousel-button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .tabs__carousel-button .google-symbols {
+    font-size: 26px;
+  }
+
+  .tabs__track {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    height: 80px !important;
+    min-height: 80px !important;
+    max-height: 80px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: var(--md-sys-shape-corner-full);
+    box-sizing: border-box;
+    border: none !important;
+    touch-action: none !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+  }
+}
+
+

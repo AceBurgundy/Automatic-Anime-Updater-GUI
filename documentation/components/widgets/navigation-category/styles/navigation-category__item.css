@@ -1,0 +1,71 @@
+/* Navigation Item Button Styles (Legacy reference: .nav-item-btn) */
+.navigation-category__item {
+  display: block;
+  width: 100%;
+}
+
+.navigation-category__item-button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 2.625rem;
+  padding: 0 1rem;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-surface-variant);
+  text-decoration: none;
+  font-family: var(--md-sys-typescale-font-label);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  user-select: none;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.navigation-category__item-button:hover {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.navigation-category__item-button--active {
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-weight: 500;
+}
+
+.navigation-category__item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* Mobile Submenu width & alignment (90% width leaving 10% space on left) */
+@media (max-width: 768px), (orientation: portrait), ((orientation: landscape) and (max-height: 550px)) {
+  .navigation-category__item {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .navigation-category__item-button {
+    width: 90%;
+    margin-left: auto;
+    height: 2.75rem;
+    padding: 0 1rem;
+  }
+}
+
+@media (min-width: 601px) and (orientation: portrait) {
+  .navigation-category__item-button {
+    font-size: 1rem;
+    height: 3rem;
+  }
+}
+
