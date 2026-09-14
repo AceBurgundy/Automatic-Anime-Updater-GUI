@@ -80,8 +80,8 @@ def show_guide_menu() -> None:
     print("-" * 80)
     
     print("\n  --start-automation")
-    print("      Description:  Searches Animepahe per-series, verifies titles, synchronizes poster")
-    print("                    artwork, and downloads all missing episodes matching your quality rules.")
+    print("      Description:  Searches Animepahe per-series, verifies titles, and downloads all")
+    print("                    missing episodes matching your quality rules.")
     print("      Instructions: Use for standard episode syncing.")
     print("      Example:      python main.py --start-automation")
 
@@ -117,42 +117,14 @@ def show_guide_menu() -> None:
     print("      Description:  Clears all entries from the ignore list.")
     print("      Example:      python main.py --reset-ignored")
 
-    print("\n  --dry-run")
-    print("      Description:  Simulates the entire process without writing or downloading files.")
-    print("      Instructions: Use to test search matching logic and verify filename formatting.")
-    print("      Example:      python main.py --start-automation --dry-run")
-
     print("\n  --single-cycle")
     print("      Description:  Runs a single pass through the pipeline and exits immediately.")
     print("      Instructions: Ideal for automated tasks or one-off manual invocations.")
     print("      Example:      python main.py --start-automation --single-cycle")
 
-    print("\n  --maximum-downloads <NUMBER>")
-    print("      Description:  Caps the number of episodes downloaded during a single run.")
-    print("      Instructions: Pass a positive integer (e.g. 1, 3, 5).")
-    print("      Example:      python main.py --start-automation --maximum-downloads 3")
-
-    print("\n  --headful-browser")
-    print("      Description:  Launches the Camoufox browser in visible GUI mode.")
-    print("      Instructions: Useful for debugging Cloudflare Turnstile or inspecting page layouts.")
-    print("      Example:      python main.py --start-automation --headful-browser")
-
-    print("\n  --verbose")
-    print("      Description:  Enables comprehensive DEBUG console and file logging.")
-    print("      Instructions: Use when troubleshooting network streams or parsing issues.")
-    print("      Example:      python main.py --start-automation --verbose")
-
     print("\n" + "-" * 80)
     print("2. CONFIGURATION & SETTINGS COMMANDS:")
     print("-" * 80)
-
-    print("\n  --set-folder-as-title")
-    print("      Description:  Enables strict '<Anime folder name> <index>.<ext>' filename formatting.")
-    print("      Example:      python main.py --set-folder-as-title")
-
-    print("\n  --unset-folder-as-title")
-    print("      Description:  Disables strict folder indexing, falling back to sequential AI naming.")
-    print("      Example:      python main.py --unset-folder-as-title")
 
     print("\n  --set-target-directory \"<DIRECTORY_PATH>\"")
     print("      Description:  Updates the anime storage directory in your .env configuration.")
@@ -168,11 +140,6 @@ def show_guide_menu() -> None:
     print("      Description:  Sets default download resolution preference in .env.")
     print("      Expected:     '1080' (default), '720', '480', or '360'.")
     print("      Example:      python main.py --set-preferred-resolution 720")
-
-    print("\n  --set-model-url \"<DIRECT_URL>\"")
-    print("      Description:  Updates the HTTP/HTTPS link to download the GGUF model file.")
-    print("      Expected:     A valid direct download URL to a GGUF model.")
-    print("      Example:      python main.py --set-model-url \"https://huggingface.co/.../model.gguf\"")
 
     print("\n  --download-model")
     print("      Description:  Downloads and verifies the AI model file with a live progress bar.")
@@ -198,14 +165,13 @@ def main():
         return 0
 
     parser = argparse.ArgumentParser(
-        description="Anime Refresher - Automated Episode & Poster Synchronization Engine",
+        description="Anime Refresher - Automated Episode Synchronization Engine",
         add_help=True
     )
 
     # Execution Flags
     parser.add_argument("--start-automation", action="store_true", help="Searches and downloads missing anime episodes")
     parser.add_argument("--start-automation-stream", action="store_true", help="Outputs real-time type-prepended JSON stream on stdout")
-    parser.add_argument("--synchronize-posters", action="store_true", help="Scans anime folders and downloads missing poster.png cover images")
     parser.add_argument("--preferred-resolution", type=str, default=None, metavar="RES", help="Overrides preferred resolution ('1080', '720', '480', '360')")
     parser.add_argument(
         "--ignore",
@@ -225,19 +191,12 @@ def main():
         help="Removes specific entries from the ignore list"
     )
     parser.add_argument("--reset-ignored", action="store_true", help="Clears all entries from the ignore list")
-    parser.add_argument("--dry-run", action="store_true", help="Simulates execution without downloading or modifying files")
     parser.add_argument("--single-cycle", action="store_true", help="Runs one pass and exits immediately")
-    parser.add_argument("--maximum-downloads", type=int, default=None, metavar="NUMBER", help="Maximum number of episode downloads allowed in this run")
-    parser.add_argument("--headful-browser", action="store_true", help="Runs browser in visible GUI mode")
-    parser.add_argument("--verbose", action="store_true", help="Enables verbose DEBUG logging")
 
     # Settings & Configuration Flags
-    parser.add_argument("--set-folder-as-title", action="store_true", help="Enables '<Folder Name> <01>.<ext>' filename indexing template")
-    parser.add_argument("--unset-folder-as-title", action="store_true", help="Disables '<Folder Name> <01>.<ext>' template (falls back to AI/sequential)")
     parser.add_argument("--set-target-directory", type=str, metavar="PATH", help="Updates target anime storage directory in .env")
     parser.add_argument("--set-audio-preference", type=str, metavar="PREF", help="Sets audio preference ('sub', 'dub', 'sub_strict', 'dub_strict')")
     parser.add_argument("--set-preferred-resolution", type=str, metavar="RES", help="Sets preferred resolution ('1080', '720', '480', '360') in .env")
-    parser.add_argument("--set-model-url", type=str, metavar="URL", help="Updates the GGUF model download URL in .env")
     parser.add_argument("--download-model", action="store_true", help="Downloads and verifies the AI model file")
     parser.add_argument("--setup-task-scheduler", action="store_true", help="Registers automated Windows Task Scheduler triggers")
     parser.add_argument("--remove-task-scheduler", action="store_true", help="Removes automated Windows Task Scheduler triggers")
@@ -246,16 +205,6 @@ def main():
 
     # 1. Handle Configuration Updates
     config_action_taken = False
-
-    if args.set_folder_as_title:
-        db_manager.set_bool_setting("folder_as_title", True)
-        print("[OK] Enabled filename template: '<Anime folder name> <index>.<format>'")
-        config_action_taken = True
-
-    if args.unset_folder_as_title:
-        db_manager.set_bool_setting("folder_as_title", False)
-        print("[OK] Disabled folder template. Reverted to AI/sequential filename format.")
-        config_action_taken = True
 
     if args.set_target_directory:
         target_p = Path(args.set_target_directory).resolve()
@@ -280,9 +229,6 @@ def main():
             return 1
         config_action_taken = True
 
-    if args.set_model_url:
-        update_env_variable("MODEL_URL", args.set_model_url.strip())
-        config_action_taken = True
 
     if args.download_model:
         success = model_manager.download_model(show_progress=True)
@@ -355,13 +301,11 @@ def main():
     # 3. Handle Pipeline Execution
     is_stream = args.start_automation_stream
     is_auto = args.start_automation or is_stream
-    is_poster = args.synchronize_posters
-    explicit_action = is_auto or is_poster
+    explicit_action = is_auto
 
-    # Default to running automation if neither is explicitly passed but other execution flags are
-    if not is_auto and not is_poster:
+    # Default to running automation if not explicitly passed but other execution flags are
+    if not is_auto:
         is_auto = True
-        is_poster = False
 
     selected_res = args.preferred_resolution.strip().lower().rstrip("p") if args.preferred_resolution else PREFERRED_RESOLUTION
     if selected_res not in VALID_RESOLUTIONS:
@@ -394,14 +338,9 @@ def main():
 
     return run_pipeline(
         start_automation=is_auto,
-        synchronize_posters=is_poster,
         stream_events=is_stream,
-        dry_run=args.dry_run,
         single_cycle=args.single_cycle,
-        maximum_downloads=args.maximum_downloads,
         preferred_resolution=selected_res,
-        headful_browser=args.headful_browser,
-        verbose=args.verbose,
         ignored=cli_ignored if cli_ignored else None
     )
 

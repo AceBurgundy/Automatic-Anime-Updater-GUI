@@ -1,3 +1,4 @@
+import os
 import logging
 import shutil
 import time
@@ -18,9 +19,25 @@ class ResilientDownloader:
         """Returns the temporary partial download path inside %TEMP%\\anime-refresher."""
         return self.temp_dir / f"{filename}.partial"
 
+    @staticmethod
+    def touch_folder_metadata(folder_path: Path) -> bool:
+        """
+        Updates the folder's access and modified timestamps (mtime) to the current time,
+        ensuring that sorting by 'Date modified' in Windows File Explorer places the folder at the top.
+        """
+        try:
+            now = time.time()
+            os.utime(str(folder_path), (now, now))
+            logger.info(f"Updated metadata timestamp for directory: {folder_path.name}")
+            return True
+        except Exception as e:
+            logger.warning(f"Could not update timestamp for {folder_path}: {e}")
+            return False
+
     def move_temp_to_target(self, temp_file: Path, target_dir: Path, final_filename: str) -> bool:
         """
         Validates safety invariants against snapshot and moves downloaded temp file to final directory.
+        Updates the target folder's modified timestamp metadata.
         """
         target_file = target_dir / final_filename
         try:
@@ -41,6 +58,7 @@ class ResilientDownloader:
         file_size_mb = temp_file.stat().st_size / (1024 * 1024)
         logger.info(f"Moving validated download ({file_size_mb:.2f} MB) -> {target_file}")
         shutil.move(str(temp_file), str(target_file))
+        self.touch_folder_metadata(target_dir)
         return True
 
     def download_file(
@@ -139,6 +157,7 @@ class ResilientDownloader:
                 logger.info(f"Download finished in {duration:.1f}s ({file_size_mb:.1f} MB @ {avg_speed:.2f} MB/s).")
                 logger.info(f"Moving {temp_file.name} -> {target_file}")
                 shutil.move(str(temp_file), str(target_file))
+                self.touch_folder_metadata(target_dir)
                 return True
             else:
                 logger.warning(f"Downloaded file {temp_file} is too small ({file_size_mb:.2f} MB). Cleaning up.")

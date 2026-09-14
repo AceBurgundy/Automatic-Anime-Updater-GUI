@@ -26,22 +26,27 @@ class SubprocessService {
 
   /// Hook: Start Tasks Execution.
   Future<void> startTasks({
-    bool synchronizePosters = true,
     String? preferredResolution,
   }) async {
     await executeTemplateSubprocess(actionName: 'start_tasks');
     unawaited(
       CliBridgeService.instance.startAutomation(
-        synchronizePosters: synchronizePosters,
         preferredResolution: preferredResolution,
       ),
     );
   }
 
-  /// Hook: Pause Tasks Execution.
-  Future<void> pauseTasks() async {
-    await executeTemplateSubprocess(actionName: 'pause_tasks');
+  /// Hook: Stop Tasks Execution.
+  /// Removes automated task scheduler triggers and terminates active automation process.
+  Future<void> stopTasks() async {
+    await executeTemplateSubprocess(actionName: 'stop_tasks');
+    await CliBridgeService.instance.removeTaskScheduler();
     CliBridgeService.instance.pauseAutomation();
+  }
+
+  /// Hook: Pause Tasks Execution (alias for stopTasks).
+  Future<void> pauseTasks() async {
+    await stopTasks();
   }
 
   /// Hook: Browse Anime Library Folder.
@@ -82,7 +87,16 @@ class SubprocessService {
       actionName: 'start_automation_schedule',
       arguments: argumentsPayload,
     );
-    await CliBridgeService.instance.setupTaskScheduler();
+    await CliBridgeService.instance.startScheduler(
+      activeDays: activeDays,
+      triggerTimes: triggerTimes,
+    );
+  }
+
+  /// Hook: Stop / Pause Automation Schedule.
+  Future<void> stopAutomationSchedule() async {
+    await executeTemplateSubprocess(actionName: 'stop_automation_schedule');
+    await CliBridgeService.instance.stopScheduler();
   }
 
   /// Hook: Add Schedule Trigger Time.
@@ -168,5 +182,41 @@ class SubprocessService {
       actionName: 'set_pages_to_scrape',
       arguments: argumentsPayload,
     );
+  }
+
+  /// Hook: List Ignored Items.
+  Future<List<String>> listIgnored() async {
+    await executeTemplateSubprocess(actionName: 'list_ignored');
+    return CliBridgeService.instance.listIgnored();
+  }
+
+  /// Hook: Add Ignored Item.
+  Future<void> addIgnoredItem(String item) async {
+    final Map<String, Object?> argumentsPayload = <String, Object?>{
+      'item': item,
+    };
+    await executeTemplateSubprocess(
+      actionName: 'add_ignored_item',
+      arguments: argumentsPayload,
+    );
+    await CliBridgeService.instance.addIgnoredItem(item);
+  }
+
+  /// Hook: Remove Ignored Item.
+  Future<void> removeIgnoredItem(String item) async {
+    final Map<String, Object?> argumentsPayload = <String, Object?>{
+      'item': item,
+    };
+    await executeTemplateSubprocess(
+      actionName: 'remove_ignored_item',
+      arguments: argumentsPayload,
+    );
+    await CliBridgeService.instance.removeIgnoredItem(item);
+  }
+
+  /// Hook: Reset Ignored Items.
+  Future<void> resetIgnoredItems() async {
+    await executeTemplateSubprocess(actionName: 'reset_ignored_items');
+    await CliBridgeService.instance.resetIgnoredItems();
   }
 }

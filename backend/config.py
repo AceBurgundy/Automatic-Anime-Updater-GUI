@@ -10,8 +10,6 @@ from constants import (
     DEFAULT_MODEL_FILENAME,
     DEFAULT_MODEL_URL,
     MODEL_MIN_SIZE_BYTES,
-    POSTER_FILENAME,
-    POSTER_CSS_SELECTOR,
     DEFAULT_TARGET_FOLDER_NAME,
     DEFAULT_AUDIO_PREFERENCE,
     VALID_AUDIO_PREFERENCES,
@@ -64,9 +62,6 @@ PREFERRED_RESOLUTION = _raw_res if _raw_res in VALID_RESOLUTIONS else DEFAULT_PR
 # Error report file path
 ERRORS_HTML_PATH = TARGET_DIR / ERRORS_HTML_FILENAME
 ERROR_REPORT_PATH = ERRORS_HTML_PATH
-
-# Poster configuration
-DOWNLOAD_POSTERS = os.getenv("DOWNLOAD_POSTERS", "true").lower() in ("true", "1", "yes")
 
 # Temp directory defaults to Windows %TEMP%\anime-refresher
 _custom_temp = os.getenv("TEMP_DIR", "").strip()

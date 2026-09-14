@@ -38,8 +38,6 @@ from config import (
     PREFERRED_RESOLUTION,
 )
 from constants import (
-    POSTER_CSS_SELECTOR,
-    POSTER_FILENAME,
     DEFAULT_PREFERRED_RESOLUTION,
     VALID_RESOLUTIONS,
     RESOLUTION_PRIORITY_MAP,
@@ -97,16 +95,11 @@ class AnimepaheScraper:
         logger.debug(f"Initializing scraper browser (Engine: {self.browser_type}, Headless: {self.headless})...")
         
         if self.browser_type in ("firefox", "camoufox") and CAMOUFOX_AVAILABLE:
-            logger.info("Launching Camoufox stealth anti-detect engine...")
-            self.camoufox_cm = AsyncCamoufox(headless=self.headless)
+            logger.info("Launching Camoufox stealth anti-detect engine (humanize=True)...")
+            self.camoufox_cm = AsyncCamoufox(headless=self.headless, humanize=True)
             self.browser = await self.camoufox_cm.__aenter__()
             self.page = await self.browser.new_page()
             self.context = self.page.context
-            if STEALTH_AVAILABLE:
-                try:
-                    await Stealth().apply_stealth_async(self.page)
-                except Exception:
-                    pass
         else:
             self.playwright = await async_playwright().start()
             if self.browser_type == "firefox":
@@ -123,17 +116,7 @@ class AnimepaheScraper:
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0",
                     locale="en-US"
                 )
-                if STEALTH_AVAILABLE:
-                    try:
-                        await Stealth().apply_stealth_async(self.context)
-                    except Exception:
-                        pass
                 self.page = await self.context.new_page()
-                if STEALTH_AVAILABLE:
-                    try:
-                        await Stealth().apply_stealth_async(self.page)
-                    except Exception:
-                        pass
             else:
                 chrome_args = [
                     "--disable-blink-features=AutomationControlled",
@@ -210,142 +193,262 @@ class AnimepaheScraper:
     async def _create_page(self) -> Page:
         if hasattr(self, "page") and self.page and not self.page.is_closed():
             return self.page
-        if self.context:
+        if self.browser:
+            try:
+                if hasattr(self.browser, "new_page"):
+                    self.page = await self.browser.new_page()
+                    self.context = getattr(self.page, "context", None)
+                elif self.context and not self.context.is_closed():
+                    self.page = await self.context.new_page()
+                else:
+                    self.page = await self.browser.new_page()
+                    self.context = getattr(self.page, "context", None)
+            except Exception:
+                if self.context and not self.context.is_closed():
+                    self.page = await self.context.new_page()
+                elif hasattr(self.browser, "new_page"):
+                    self.page = await self.browser.new_page()
+            return self.page
+        elif self.context and not self.context.is_closed():
             self.page = await self.context.new_page()
-            if STEALTH_AVAILABLE:
-                try:
-                    await Stealth().apply_stealth_async(self.page)
-                except Exception:
-                    pass
             return self.page
         raise RuntimeError("Browser context is not initialized")
 
     async def _reset_page(self) -> Page:
-        """Safely resets the active page to clear corrupted or in-flight navigation states."""
+        """Safely resets the active page to clear in-flight navigation states."""
         if hasattr(self, "page") and self.page:
             try:
                 if not self.page.is_closed():
                     await self.page.close()
             except Exception:
                 pass
-        if self.context:
-            self.page = await self.context.new_page()
-            if STEALTH_AVAILABLE:
-                try:
-                    await Stealth().apply_stealth_async(self.page)
-                except Exception:
-                    pass
-            return self.page
-        raise RuntimeError("Browser context is not initialized")
+        self.page = None
+        return await self._create_page()
+
+    async def _reset_browser_context(self) -> Page:
+        """
+        Clears all cookies, storage, and in-flight tabs to completely purge
+        corrupted Cloudflare challenge tokens (__cf_chl_rt_tk, etc.).
+        """
+        logger.warning("Purging browser context cookies and resetting active session...")
+        if hasattr(self, "page") and self.page:
+            try:
+                if not self.page.is_closed():
+                    await self.page.close()
+            except Exception:
+                pass
+        self.page = None
+
+        if self.context and not self.context.is_closed():
+            try:
+                await self.context.clear_cookies()
+            except Exception as e:
+                logger.debug(f"Failed to clear cookies: {e}")
+
+        return await self._create_page()
+
+    async def _safe_goto(self, url: str, wait_until: str = "domcontentloaded", timeout: float = 30000) -> Tuple[Page, Optional[Any]]:
+        """Safely navigates to a URL, retrying once if connection drop occurs."""
+        page = await self._create_page()
+        try:
+            response = await page.goto(url, wait_until=wait_until, timeout=timeout)
+            return page, response
+        except Exception as e:
+            logger.debug(f"Navigation to {url} encountered error ({e}). Resetting page and retrying...")
+            page = await self._reset_page()
+            response = await page.goto(url, wait_until=wait_until, timeout=timeout)
+            return page, response
 
     async def jitter(self, min_sec: float = 1.0, max_sec: float = 2.5):
-        """Randomized human-like jitter delay."""
+        """Variable delay with realistic jitter."""
         delay = random.uniform(min_sec, max_sec)
         await asyncio.sleep(delay)
 
-    async def _handle_cloudflare_if_present(self, page: Page, max_wait: int = 40) -> bool:
+    async def _human_mouse_move(self, page: Page, target_x: float, target_y: float, steps: int = 15):
+        """Simulates smooth mouse movement."""
+        try:
+            if self.browser_type in ("firefox", "camoufox") and CAMOUFOX_AVAILABLE:
+                await page.mouse.move(target_x, target_y)
+            else:
+                vp = page.viewport_size or {"width": 1920, "height": 1080}
+                cur_x = random.uniform(vp["width"] * 0.3, vp["width"] * 0.7)
+                cur_y = random.uniform(vp["height"] * 0.3, vp["height"] * 0.7)
+                for i in range(1, steps + 1):
+                    t = i / steps
+                    factor = t * t * (3 - 2 * t)
+                    x = cur_x + (target_x - cur_x) * factor + random.uniform(-2, 2)
+                    y = cur_y + (target_y - cur_y) * factor + random.uniform(-2, 2)
+                    await page.mouse.move(x, y)
+                    await asyncio.sleep(random.uniform(0.015, 0.035))
+                await page.mouse.move(target_x, target_y)
+        except Exception:
+            pass
+
+    async def _human_scroll(self, page: Page):
+        """Simulates realistic browsing scroll behavior."""
+        try:
+            delta = random.randint(180, 420)
+            await page.mouse.wheel(0, delta)
+            await asyncio.sleep(random.uniform(0.2, 0.5))
+            if random.random() < 0.35:
+                await page.mouse.wheel(0, -random.randint(60, 150))
+                await asyncio.sleep(random.uniform(0.1, 0.3))
+        except Exception:
+            pass
+
+    async def _handle_cloudflare_if_present(self, page: Page, max_wait: int = 30) -> bool:
         """Detects and waits for Cloudflare Turnstile / Managed challenge clearance."""
         for sec in range(0, max_wait, 2):
             try:
                 title = await page.title()
+                current_url = page.url
             except Exception:
                 title = ""
+                current_url = ""
 
             title_clean = title.strip()
+
+            # Check DOM for challenge markers
+            has_challenge_dom = False
+            try:
+                has_challenge_dom = await page.evaluate('''() => {
+                    return Boolean(
+                        document.querySelector('#challenge-stage, #cf-stage, #turnstile-wrapper, .cf-turnstile, iframe[src*="challenges.cloudflare.com"], iframe[src*="cloudflare"], #challenge-running, #challenge-error-title')
+                    );
+                }''')
+            except Exception:
+                pass
+
             is_cf_challenge = (
                 not title_clean
                 or "Just a moment" in title
-                or title.startswith("Loading")
+                or "Performing security" in title
+                or "__cf_chl" in current_url
                 or "Attention Required" in title
                 or "Turnstile" in title
                 or "Cloudflare" in title
+                or "Verify you are human" in title
+                or "Security Check" in title
                 or "502" in title
                 or "503" in title
                 or "520" in title
                 or "403" in title
+                or "429" in title
+                or has_challenge_dom
             )
 
-            if not is_cf_challenge:
-                # Double check DOM has rendered content
+            # If not visibly in a challenge and URL has settled
+            if not is_cf_challenge and not title.startswith("Loading"):
                 try:
-                    has_content = await page.evaluate('''() => {
-                        return Boolean(document.querySelector('nav, .navbar, .theatre, .episode, #search, .theatre-info, h1, body') && document.body && document.body.innerText.length > 50);
+                    content_check = await page.evaluate('''() => {
+                        const hasAnimeContent = Boolean(document.querySelector('nav, .navbar, .theatre, .episode, #search, .theatre-info, .episode-wrap, #downloadMenu, #pickDownload'));
+                        const hasKwikContent = Boolean(document.querySelector('form button, button[type="submit"], .button.is-success, .button.is-primary, a.button, .box, input[type="submit"]'));
+                        return hasAnimeContent || hasKwikContent;
                     }''')
-                    if has_content:
+                    if content_check:
                         logger.debug(f"Cloudflare verification cleared (Title: '{title}')")
                         return True
                 except Exception:
                     pass
 
-            logger.debug(f"Cloudflare wait ({sec+2}s/{max_wait}s): Title = '{title}'")
-            
-            # 1. Try finding Turnstile iframe on page and clicking coordinates
+            logger.debug(f"Cloudflare wait ({sec+2}s/{max_wait}s): Title = '{title}', URL = '{current_url[:60]}...'")
+
+            # Try finding Turnstile iframe on page and clicking coordinates
             try:
-                cf_iframes = page.locator("iframe[src*='cloudflare'], iframe[src*='turnstile'], iframe[title*='Cloudflare'], iframe[title*='Turnstile']")
+                cf_iframes = page.locator("iframe[src*='cloudflare'], iframe[src*='turnstile'], iframe[src*='challenges'], iframe[title*='Cloudflare'], iframe[title*='Turnstile']")
                 count = await cf_iframes.count()
                 if count > 0:
                     for idx in range(count):
                         iframe_el = cf_iframes.nth(idx)
-                        box = await iframe_el.bounding_box()
+                        box = await iframe_el.bounding_box(timeout=1500)
                         if box:
                             click_x = box["x"] + min(30, box["width"] / 4)
                             click_y = box["y"] + box["height"] / 2
-                            await page.mouse.move(click_x, click_y)
-                            await asyncio.sleep(0.1)
                             await page.mouse.click(click_x, click_y)
             except Exception:
                 pass
 
-            # 2. Check inner frame elements for Turnstile checkbox
+            # Check inner frame elements for Turnstile checkbox
             try:
                 for frame in page.frames:
                     if "cloudflare" in frame.url or "turnstile" in frame.url or "challenge" in frame.url:
-                        box = await frame.query_selector("input[type='checkbox'], .ctp-checkbox-label, #cf-stage, #challenge-stage")
+                        box = await frame.query_selector("input[type='checkbox'], span.mark, .ctp-checkbox-label, #cf-stage, #challenge-stage")
                         if box:
                             logger.debug("Found Cloudflare Turnstile checkbox inside frame. Clicking...")
-                            await box.click()
+                            await box.click(timeout=2000)
             except Exception:
                 pass
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(2.0)
 
         try:
             title = await page.title()
             title_clean = title.strip()
+            current_url = page.url
             is_valid = (
                 title_clean != ""
                 and "Just a moment" not in title
-                and not title.startswith("Loading")
+                and "Performing security" not in title
+                and "__cf_chl" not in current_url
                 and "Attention Required" not in title
                 and "Turnstile" not in title
                 and "Cloudflare" not in title
+                and "Verify you are human" not in title
             )
             return is_valid
         except Exception:
             return False
 
     async def find_active_mirror(self) -> str:
-        """Tests base URLs and returns the first responsive Animepahe mirror."""
+        """Tests base URLs and selects the first responsive Animepahe mirror with fast failover."""
         page = await self._create_page()
         for url in self.base_urls:
             try:
-                logger.info(f"Testing mirror connection: {url}")
-                await page.goto(url, wait_until="commit", timeout=25000)
-                passed = await self._handle_cloudflare_if_present(page, max_wait=30)
+                logger.info(f"Testing mirror connection: {url}...")
+                resp = await page.goto(url, wait_until="domcontentloaded", timeout=6000)
+                passed = await self._handle_cloudflare_if_present(page, max_wait=8)
                 if passed:
                     self.active_base_url = url
                     logger.info(f"Selected active Animepahe mirror: {self.active_base_url}")
                     return url
+                else:
+                    logger.debug(f"Mirror {url} did not clear challenge in 8s. Probing next mirror...")
             except Exception as e:
-                logger.debug(f"Mirror {url} failed: {e}")
-                try:
-                    page = await self._reset_page()
-                except Exception:
-                    pass
+                logger.debug(f"Mirror {url} probe timed out or failed: {e}")
 
-        logger.warning("No Animepahe mirror passed Cloudflare challenge verification. Defaulting to first mirror.")
+        # If all mirrors are currently challenged, default immediately to the first mirror without blocking
+        logger.info(f"Selected active Animepahe mirror: {self.base_urls[0]}")
         self.active_base_url = self.base_urls[0]
         return self.base_urls[0]
+
+    async def rotate_mirror(self) -> str:
+        """
+        Rotates to the next available mirror in base_urls, purges corrupted challenge
+        state/cookies via _reset_browser_context, and probes connectivity on the new mirror.
+        """
+        if not self.base_urls:
+            return self.active_base_url
+
+        try:
+            cur_idx = self.base_urls.index(self.active_base_url)
+        except ValueError:
+            cur_idx = 0
+
+        next_idx = (cur_idx + 1) % len(self.base_urls)
+        old_mirror = self.active_base_url
+        self.active_base_url = self.base_urls[next_idx]
+        logger.warning(f"Mirror rotation triggered: {old_mirror} -> {self.active_base_url}")
+
+        # Purge cookies & page context to prevent cross-mirror challenge poisoning
+        page = await self._reset_browser_context()
+        try:
+            logger.info(f"Probing rotated mirror {self.active_base_url}...")
+            page, _ = await self._safe_goto(self.active_base_url, wait_until="domcontentloaded", timeout=15000)
+            await self._handle_cloudflare_if_present(page, max_wait=15)
+        except Exception as e:
+            logger.warning(f"Error during mirror switch probe to {self.active_base_url}: {e}")
+
+        return self.active_base_url
 
     async def scrape_recent_releases(self, max_pages: int = 3) -> List[Dict[str, Any]]:
         """Scrapes recent episode release cards across pages 1 to max_pages."""
@@ -462,7 +565,7 @@ class AnimepaheScraper:
             logger.debug(f"Fuzzy match: '{web_title}' -> '{best_match}' (score: {best_score}/100)")
         return best_match
 
-    async def _ensure_on_mirror(self, page: Page) -> bool:
+    async def _ensure_on_mirror(self, page: Page, allow_rotate: bool = True) -> bool:
         """Ensures the page is currently navigated to the active Animepahe mirror with Cloudflare cleared."""
         try:
             current_url = page.url or ""
@@ -484,8 +587,12 @@ class AnimepaheScraper:
 
             if needs_nav:
                 logger.debug(f"Ensuring page is on active mirror ({self.active_base_url}), currently at '{current_url}'")
-                await page.goto(self.active_base_url, wait_until="commit", timeout=20000)
+                page, _ = await self._safe_goto(self.active_base_url, wait_until="commit", timeout=20000)
                 passed = await self._handle_cloudflare_if_present(page, max_wait=25)
+                if not passed and allow_rotate and len(self.base_urls) > 1:
+                    logger.warning(f"Active mirror {self.active_base_url} blocked by Cloudflare. Rotating mirror...")
+                    await self.rotate_mirror()
+                    return await self._ensure_on_mirror(self.page or page, allow_rotate=False)
                 return passed
             return True
         except Exception as e:
@@ -495,7 +602,10 @@ class AnimepaheScraper:
     async def _execute_single_search_api_call(self, page: Page, query_str: str) -> List[Dict[str, Any]]:
         """Executes a single search API request against Animepahe via browser page evaluate."""
         try:
-            await self._ensure_on_mirror(page)
+            on_mirror = await self._ensure_on_mirror(page)
+            if not on_mirror:
+                logger.warning(f"Active mirror {self.active_base_url} is not accessible for search API")
+                return []
             eval_result = await asyncio.wait_for(
                 page.evaluate('''async (queryTitle) => {
                     const controller = new AbortController();
@@ -538,35 +648,68 @@ class AnimepaheScraper:
             logger.debug(f"Search API error for '{query_str}': {e}")
             return []
 
-    async def _resolve_jikan_romaji_alias(self, english_title: str) -> Optional[str]:
-        """Queries the free public Jikan/MAL API to resolve an English title to official Romaji title."""
+    async def _resolve_metadata_aliases(self, english_title: str) -> List[str]:
+        """Queries AniList and Jikan/MAL APIs to resolve official Romaji titles and synonyms."""
+        aliases = []
+        # 1. AniList GraphQL
         try:
-            url = f"https://api.jikan.moe/v4/anime?q={urllib.parse.quote(english_title)}&limit=1"
-            async with httpx.AsyncClient(timeout=4.0, follow_redirects=True) as client:
+            query = '''
+            query ($search: String) {
+              Media (search: $search, type: ANIME) {
+                title { romaji english native }
+                synonyms
+              }
+            }
+            '''
+            async with httpx.AsyncClient(timeout=3.5, follow_redirects=True) as client:
+                res = await client.post('https://graphql.anilist.co', json={'query': query, 'variables': {'search': english_title}})
+                if res.status_code == 200:
+                    media = res.json().get('data', {}).get('Media')
+                    if media:
+                        titles = media.get('title', {})
+                        for k in ('romaji', 'english'):
+                            v = titles.get(k)
+                            if v and v.lower() != english_title.lower() and v not in aliases:
+                                aliases.append(v)
+                        for s in media.get('synonyms', []):
+                            if s and s.lower() != english_title.lower() and s not in aliases:
+                                aliases.append(s)
+        except Exception as e:
+            logger.debug(f"AniList alias resolution error: {e}")
+
+        # 2. Jikan / MAL API
+        try:
+            clean = re.sub(r'\s+(?:season\s+\d+|s\d+|ii|iii|iv|v|act\.\d+)\b', '', english_title, flags=re.IGNORECASE)
+            url = f"https://api.jikan.moe/v4/anime?q={urllib.parse.quote(clean)}&limit=1"
+            async with httpx.AsyncClient(timeout=3.5, follow_redirects=True) as client:
                 res = await client.get(url)
                 if res.status_code == 200:
                     data = res.json().get("data", [])
                     if data:
                         top = data[0]
-                        romaji = top.get("title") or top.get("title_japanese")
-                        if romaji and romaji.lower() != english_title.lower():
-                            logger.info(f"[Alias Bridge] Resolved '{english_title}' -> Romaji: '{romaji}'")
-                            return romaji
+                        for k in ("title", "title_japanese", "title_english"):
+                            v = top.get(k)
+                            if v and v.lower() != english_title.lower() and v not in aliases:
+                                aliases.append(v)
         except Exception as e:
-            logger.debug(f"Jikan alias resolution unavailable: {e}")
-        return None
+            logger.debug(f"Jikan alias resolution error: {e}")
+
+        return aliases
 
     async def search_anime_title(self, title: str) -> List[Dict[str, Any]]:
         """
         Queries Animepahe's internal search API using a multi-tier progressive query strategy:
         1. Full cleaned title.
         2. Base franchise title (stripped of Roman numerals, Season X, arc subtitles).
-        3. Significant keyword pruning (stopwords removed).
-        4. Public metadata alias bridge (Jikan Romaji resolution).
+        3. Distinctive keyword pruning (stopwords removed, sub-clauses).
+        4. Public metadata alias bridge (AniList GraphQL & Jikan Romaji/synonyms resolution).
         """
         page = await self._create_page()
         try:
-            await self._ensure_on_mirror(page)
+            on_mirror = await self._ensure_on_mirror(page)
+            if not on_mirror:
+                logger.warning(f"Active mirror {self.active_base_url} is not accessible for search")
+                return []
 
             # Tier 1 - 3: Progressive decomposed queries
             queries = self.ai_helper.decompose_search_queries(title)
@@ -577,134 +720,21 @@ class AnimepaheScraper:
                     logger.debug(f"[Search Tier {idx}] Found {len(results)} candidate(s) for query: '{q}'")
                     return results
 
-            # Tier 4: Jikan public open alias bridge
-            romaji_alias = await self._resolve_jikan_romaji_alias(title)
-            if romaji_alias:
-                logger.debug(f"[Search Tier 4] Querying Animepahe with Romaji alias: '{romaji_alias}'")
-                results = await self._execute_single_search_api_call(page, romaji_alias)
-                if results:
-                    return results
+            # Tier 4: Metadata alias bridge (AniList + Jikan synonyms)
+            aliases = await self._resolve_metadata_aliases(title)
+            if aliases:
+                for al in aliases:
+                    for al_q in self.ai_helper.decompose_search_queries(al):
+                        logger.debug(f"[Search Tier 4 Alias] Querying Animepahe with alias query: '{al_q}'")
+                        results = await self._execute_single_search_api_call(page, al_q)
+                        if results:
+                            return results
 
             logger.debug(f"All progressive search tiers yielded 0 results for '{title}'")
             return []
         except Exception as e:
             logger.error(f"Error executing search queries for '{title}': {e}")
             return []
-
-    async def fetch_poster_for_anime(
-        self,
-        anime_session_or_id: str = "",
-        title: str = "",
-        poster_url: Optional[str] = None
-    ) -> Optional[bytes]:
-        """
-        Downloads high-resolution anime poster image bytes.
-        If poster_url is provided directly from search metadata, downloads it immediately.
-        Otherwise navigates to the anime overview page to extract and download the poster.
-        """
-        # Fast-path: Direct poster download from URL
-        if poster_url:
-            try:
-                full_url = urljoin(self.active_base_url, poster_url)
-                logger.info(f"Downloading poster artwork from metadata URL: {full_url}")
-                async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-                    res = await client.get(full_url)
-                    if res.status_code == 200 and len(res.content) > 1000:
-                        return res.content
-            except Exception as e:
-                logger.debug(f"Direct poster download failed: {e}")
-
-        page = await self._create_page()
-        try:
-            target_url = None
-            if anime_session_or_id:
-                target_url = urljoin(self.active_base_url, f"/anime/{anime_session_or_id}")
-            elif title:
-                # Search via search API
-                search_results = await self.search_anime_title(title)
-                if search_results:
-                    session = search_results[0].get("session", "")
-                    if session:
-                        target_url = urljoin(self.active_base_url, f"/anime/{session}")
-
-            if not target_url:
-                logger.warning(f"Could not determine anime URL to fetch poster for '{title}'")
-                return None
-
-            logger.info(f"Fetching poster artwork from overview page: {target_url}")
-            await page.goto(target_url, wait_until="commit", timeout=25000)
-            await self._handle_cloudflare_if_present(page, max_wait=30)
-            await self.jitter(1.0, 1.5)
-
-            # Extract poster URL from .anime-poster a, .anime-poster img
-            extracted_poster_url = await page.evaluate('''() => {
-                const posterContainer = document.querySelector('.anime-poster');
-                if (posterContainer) {
-                    const a = posterContainer.querySelector('a');
-                    if (a && a.href && !a.href.includes('youtube')) return a.href;
-                    const img = posterContainer.querySelector('img');
-                    if (img) {
-                        return img.getAttribute('data-src') || img.src || '';
-                    }
-                }
-                const fallbackImg = document.querySelector('.poster-image img, img.poster, .anime-cover img');
-                if (fallbackImg) {
-                    return fallbackImg.getAttribute('data-src') || fallbackImg.src || '';
-                }
-                return null;
-            }''')
-
-            if not extracted_poster_url:
-                logger.warning(f"No poster URL found in DOM for '{title}' at {target_url}")
-                return None
-
-            full_poster_url = urljoin(self.active_base_url, extracted_poster_url)
-            logger.info(f"Downloading poster image: {full_poster_url}")
-
-            # Download poster image bytes using browser context cookies
-            cookies_list = await self.context.cookies()
-            cookies_dict = {c["name"]: c["value"] for c in cookies_list}
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0",
-                "Referer": target_url
-            }
-
-            async with httpx.AsyncClient(headers=headers, cookies=cookies_dict, follow_redirects=True, timeout=30.0) as client:
-                res = await client.get(full_poster_url)
-                if res.status_code == 200 and len(res.content) > 1000:
-                    logger.info(f"Successfully retrieved poster bytes ({len(res.content)} bytes)")
-                    return res.content
-
-            # Fallback: fetch via page context evaluate
-            logger.debug("Fetching poster bytes via browser page context...")
-            b64_data = await page.evaluate(f'''async () => {{
-                try {{
-                    const r = await fetch('{full_poster_url}');
-                    if (r.ok) {{
-                        const blob = await r.blob();
-                        return new Promise((resolve) => {{
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result);
-                            reader.readAsDataURL(blob);
-                        }});
-                    }}
-                }} catch (e) {{}}
-                return null;
-            }}''')
-
-            if b64_data and "," in b64_data:
-                import base64
-                header, encoded = b64_data.split(",", 1)
-                img_bytes = base64.b64decode(encoded)
-                if len(img_bytes) > 1000:
-                    return img_bytes
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error fetching poster for '{title}': {e}")
-            return None
-
 
     def _select_preferred_source(
         self,
@@ -790,16 +820,87 @@ class AnimepaheScraper:
 
     async def get_show_episodes(self, play_url: str) -> Tuple[str, Dict[int, str]]:
         """
-        Retrieves all available episode numbers and play URLs for a series using API and DOM.
+        Retrieves all available episode numbers and play URLs for a series using Release API and DOM.
         """
         page = await self._create_page()
         try:
-            logger.info(f"Accessing episode catalog for: {play_url}")
-            await page.goto(play_url, wait_until="commit", timeout=30000)
-            await self._handle_cloudflare_if_present(page, max_wait=35)
-            await self.jitter(1.0, 2.0)
+            # Normalize play_url to active mirror domain
+            for u in self.base_urls:
+                if play_url.startswith(u):
+                    play_url = play_url.replace(u, self.active_base_url, 1)
+                    break
 
-            # Extract anime session and title
+            logger.info(f"Accessing episode catalog for: {play_url}")
+            on_mirror = await self._ensure_on_mirror(page)
+            if not on_mirror:
+                raise RuntimeError(f"Mirror {self.active_base_url} is inaccessible or blocked by Cloudflare challenge")
+
+            # Extract anime session directly from play_url
+            anime_session = ""
+            m = re.search(r'/(?:play|anime)/([a-zA-Z0-9\-]+)', play_url)
+            if m:
+                anime_session = m.group(1)
+
+            episodes: Dict[int, str] = {}
+            show_title = ""
+
+            # Fetch via release API if anime_session exists
+            if anime_session:
+                logger.debug(f"Fetching complete episode list via release API for session: {anime_session}")
+                current_p = 1
+                while current_p <= 15:
+                    api_data = None
+                    for attempt in range(2):
+                        try:
+                            api_data = await asyncio.wait_for(
+                                page.evaluate(f'''async () => {{
+                                    const controller = new AbortController();
+                                    const timeoutId = setTimeout(() => controller.abort(), 6000);
+                                    try {{
+                                        const res = await fetch('/api?m=release&id={anime_session}&sort=episode_asc&page={current_p}', {{
+                                            signal: controller.signal,
+                                            headers: {{ 'Accept': 'application/json' }}
+                                        }});
+                                        clearTimeout(timeoutId);
+                                        if (res.ok) return await res.json();
+                                    }} catch (e) {{
+                                        clearTimeout(timeoutId);
+                                    }}
+                                    return null;
+                                }}'''),
+                                timeout=10.0
+                            )
+                            if api_data:
+                                break
+                        except Exception:
+                            await asyncio.sleep(0.5)
+
+                    if not api_data or not api_data.get("data"):
+                        break
+
+                    for ep_item in api_data.get("data", []):
+                        ep_val = ep_item.get("episode", 0)
+                        session_val = ep_item.get("session", "")
+                        if str(ep_val).isdigit() and session_val:
+                            ep_num = int(ep_val)
+                            ep_play_url = urljoin(self.active_base_url, f"/play/{anime_session}/{session_val}")
+                            episodes[ep_num] = ep_play_url
+
+                    last_p = api_data.get("last_page", 1)
+                    if current_p >= last_p:
+                        break
+                    current_p += 1
+
+                if episodes:
+                    logger.info(f"Retrieved {len(episodes)} total episodes for session '{anime_session}' via API.")
+                    return show_title or anime_session, episodes
+
+            # If API yielded 0 episodes or session extraction was absent, fallback to page navigation & DOM
+            page, _ = await self._safe_goto(play_url, wait_until="commit", timeout=25000)
+            await self._handle_cloudflare_if_present(page, max_wait=20)
+            await self.jitter(0.5, 1.5)
+
+            # Extract show title from DOM
             show_info = await page.evaluate('''() => {
                 const infoContainer = document.querySelector('.theatre-info');
                 let showTitle = '';
@@ -824,71 +925,6 @@ class AnimepaheScraper:
 
             show_title = show_info.get("title", "")
             show_href = show_info.get("href", "")
-            
-            anime_session = ""
-            if show_href:
-                m = re.search(r'/anime/([a-zA-Z0-9\-]+)', show_href)
-                if m:
-                    anime_session = m.group(1)
-            
-            if not anime_session:
-                m = re.search(r'/play/([a-zA-Z0-9\-]+)/', play_url)
-                if m:
-                    anime_session = m.group(1)
-
-            episodes: Dict[int, str] = {}
-
-            # Fetch via release API if anime_session exists
-            if anime_session:
-                logger.debug(f"Fetching complete episode list via release API for session: {anime_session}")
-                current_p = 1
-                while current_p <= 10:
-                    api_data = await asyncio.wait_for(
-                        page.evaluate(f'''async () => {{
-                            const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 8000);
-                            try {{
-                                const res = await fetch('/api?m=release&id={anime_session}&sort=episode_asc&page={current_p}', {{
-                                    signal: controller.signal,
-                                    headers: {{ 'Accept': 'application/json' }}
-                                }});
-                                clearTimeout(timeoutId);
-                                if (res.ok) return await res.json();
-                            }} catch (e) {{
-                                clearTimeout(timeoutId);
-                            }}
-                            return null;
-                        }}'''),
-                        timeout=12.0
-                    )
-
-                    if not api_data or not api_data.get("data"):
-                        break
-
-                    for ep_item in api_data.get("data", []):
-                        ep_val = ep_item.get("episode", 0)
-                        session_val = ep_item.get("session", "")
-                        if str(ep_val).isdigit() and session_val:
-                            ep_num = int(ep_val)
-                            ep_play_url = urljoin(self.active_base_url, f"/play/{anime_session}/{session_val}")
-                            episodes[ep_num] = ep_play_url
-
-                    last_p = api_data.get("last_page", 1)
-                    if current_p >= last_p:
-                        break
-                    current_p += 1
-
-            if episodes:
-                logger.info(f"Retrieved {len(episodes)} total episodes for '{show_title or anime_session}' via API.")
-                return show_title, episodes
-
-            # DOM Parsing fallback
-            if show_href:
-                show_url = urljoin(self.active_base_url, show_href)
-                logger.debug(f"Navigating to show catalog page: {show_url}")
-                await page.goto(show_url, wait_until="commit", timeout=30000)
-                await self._handle_cloudflare_if_present(page, max_wait=35)
-                await self.jitter(1.0, 2.0)
 
             episodes_dom = await page.evaluate('''() => {
                 const epMap = {};
@@ -916,12 +952,12 @@ class AnimepaheScraper:
             return show_title, episodes
 
         except Exception as e:
-            logger.error(f"Error fetching show episodes from {play_url}: {e}", exc_info=True)
+            logger.error(f"Error fetching show episodes from {play_url}: {e}")
             try:
                 await self._reset_page()
             except Exception:
                 pass
-            return "", {}
+            raise
 
     async def download_episode_to_temp(
         self,
@@ -939,28 +975,66 @@ class AnimepaheScraper:
         page = await self._create_page()
         try:
             logger.info(f"Resolving download stream for '{anime_title}' Ep {episode_num}: {play_url}")
-            await page.goto(play_url, wait_until="commit", timeout=30000)
-            await self._handle_cloudflare_if_present(page, max_wait=35)
+            page, _ = await self._safe_goto(play_url, wait_until="domcontentloaded", timeout=35000)
+            await self._handle_cloudflare_if_present(page, max_wait=30)
             await self.jitter(1.0, 2.0)
 
-            # Click #downloadMenu button to open #pickDownload
-            btn = await page.wait_for_selector("#downloadMenu, button.dropdown-toggle, .download", timeout=12000)
-            logger.debug("Clicking #downloadMenu dropdown button...")
-            await btn.click()
-            await asyncio.sleep(1.5)
+            # Wait for and click #downloadMenu button to open #pickDownload
+            btn = None
+            for _ in range(2):
+                try:
+                    btn = await page.wait_for_selector("#downloadMenu, button.dropdown-toggle, .download", timeout=18000)
+                    if btn:
+                        break
+                except Exception:
+                    await self._handle_cloudflare_if_present(page, max_wait=10)
 
-            # Extract resolution options from #pickDownload
-            options = await page.evaluate('''() => {
-                const container = document.querySelector('#pickDownload');
-                if (!container) return [];
-                return Array.from(container.querySelectorAll('a')).map(a => ({
-                    text: a.textContent.trim(),
-                    href: a.getAttribute('href')
-                }));
-            }''')
+            if not btn:
+                logger.error(f"Download menu button not found on play page for '{anime_title}' Ep {episode_num}")
+                return False
+
+            logger.debug("Clicking #downloadMenu dropdown button...")
+            try:
+                await btn.click()
+            except Exception as click_err:
+                logger.debug(f"Direct click on #downloadMenu failed ({click_err}). Dispatching JS click...")
+                await page.evaluate('''() => {
+                    const el = document.querySelector('#downloadMenu, button.dropdown-toggle, .download');
+                    if (el) el.click();
+                }''')
+            
+            # Poll for #pickDownload options with JS click fallback
+            options = []
+            for poll_idx in range(8):
+                await asyncio.sleep(0.75)
+                options = await page.evaluate(r'''() => {
+                    const containers = document.querySelectorAll('#pickDownload, .dropdown-menu');
+                    const res = [];
+                    containers.forEach(c => {
+                        c.querySelectorAll('a').forEach(a => {
+                            const text = a.textContent.trim();
+                            const href = a.getAttribute('href');
+                            if (text && href && (href.startsWith('http') || href.includes('pahe.win') || href.includes('/f/') || /\d+p/.test(text))) {
+                                res.push({ text: text, href: href });
+                            }
+                        });
+                    });
+                    return res;
+                }''')
+                if options:
+                    break
+                if poll_idx == 3:
+                    logger.debug("Dropdown options not yet visible. Dispatching synthetic MouseEvent click to #downloadMenu...")
+                    await page.evaluate('''() => {
+                        const el = document.querySelector('#downloadMenu, button.dropdown-toggle, .download');
+                        if (el) {
+                            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                        }
+                    }''')
 
             if not options:
                 logger.warning(f"No download options found in dropdown for '{anime_title}' Ep {episode_num}")
+                await self._reset_page()
                 return False
 
             # Select target option using audio preference and resolution rules
@@ -971,41 +1045,67 @@ class AnimepaheScraper:
                 preferred_resolution=preferred_resolution
             )
             if not target_option:
+                await self._reset_page()
                 return False
 
             target_href = target_option["href"]
             logger.info(f"Selected resolution link: '{target_option['text']}' -> {target_href}")
 
-
             # Navigate to redirect page
             logger.debug(f"Navigating to redirect page: {target_href}")
-            await page.goto(target_href, wait_until="commit", timeout=30000)
+            page, _ = await self._safe_goto(target_href, wait_until="commit", timeout=35000)
             await self._handle_cloudflare_if_present(page, max_wait=30)
-            await self.jitter(1.5, 2.5)
+            await self.jitter(1.0, 2.0)
 
             # Extract kwik link
+            current_page_url = page.url or ""
             html_content = await page.content()
             m = re.search(r'https?://(?:kwik\.[a-z]+|pahe\.win)/f/([a-zA-Z0-9]+)', html_content)
-            kwik_url = m.group(0) if m else page.url
+            kwik_url = m.group(0) if m else current_page_url
 
-            if "kwik" in kwik_url or "/f/" in kwik_url:
+            # Only perform explicit navigation if we are not already on the destination Kwik page
+            if ("kwik" in kwik_url or "/f/" in kwik_url) and kwik_url != current_page_url and "/f/" not in current_page_url:
                 logger.debug(f"Navigating to Kwik page: {kwik_url}")
-                await page.goto(kwik_url, wait_until="commit", timeout=30000)
-                await self._handle_cloudflare_if_present(page, max_wait=30)
-                await self.jitter(1.5, 2.5)
+                page, _ = await self._safe_goto(kwik_url, wait_until="domcontentloaded", timeout=35000)
+                await self._handle_cloudflare_if_present(page, max_wait=45)
+                await self.jitter(1.0, 2.0)
+            else:
+                await self._handle_cloudflare_if_present(page, max_wait=45)
 
             if temp_target_file.exists():
                 temp_target_file.unlink()
 
             logger.info(f"Triggering browser download to temporary path: {temp_target_file}")
-            dl_submit = await page.wait_for_selector("form button, button[type='submit'], .button.is-success", timeout=15000)
+            dl_selector = "form button, button[type='submit'], .button.is-success, .button.is-primary, a.button, input[type='submit'], button:has-text('Download'), .btn-download, button"
+            
+            dl_submit = None
+            try:
+                dl_submit = await page.wait_for_selector(dl_selector, timeout=25000)
+            except Exception:
+                logger.debug("Download selector not immediately visible. Checking Cloudflare clearance and DOM state...")
+                await self._handle_cloudflare_if_present(page, max_wait=15)
+                try:
+                    dl_submit = await page.wait_for_selector(dl_selector, timeout=10000)
+                except Exception:
+                    pass
+
+            # Fallback: check if form exists even if button isn't directly matched
+            if not dl_submit:
+                has_form = await page.evaluate('''() => Boolean(document.querySelector('form'))''')
+                if has_form:
+                    logger.debug("Found form in DOM, acquiring submit element...")
+                    dl_submit = await page.query_selector("form button, form input[type='submit'], form")
+
             if not dl_submit:
                 logger.error("Download submit button not found on Kwik page")
                 return False
 
             start_dl_time = time.time()
-            async with page.expect_download(timeout=60000) as download_info:
-                await dl_submit.click()
+            async with page.expect_download(timeout=90000) as download_info:
+                try:
+                    await dl_submit.click()
+                except Exception:
+                    await page.evaluate("() => { const f = document.querySelector('form'); if (f) f.submit(); }")
             download = await download_info.value
 
             logger.info(f"Browser download streaming from CDN: {download.url[:80]}...")

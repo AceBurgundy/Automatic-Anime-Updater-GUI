@@ -207,8 +207,9 @@ class AIHelper:
         """
         Generates progressive fallback search queries for Animepahe:
         1. Full cleaned title.
-        2. Base franchise title (stripped of Roman numerals, Season X, Part X, arc suffixes).
-        3. Significant keyword pruning (stopwords removed).
+        2. Base franchise title (stripped of Roman numerals, Season X, Part X, Act X, arc suffixes).
+        3. Significant sub-clause splitting (colons, dashes, 'I am / I'm').
+        4. Distinctive 2-word and 3-word token tuples.
         """
         queries = []
         clean = self._WIN_FORBIDDEN.sub(' ', folder_title).strip()
@@ -218,7 +219,7 @@ class AIHelper:
 
         # Base franchise title: strip trailing season tags, Roman numerals, and subtitle parts
         # e.g. "Is It Wrong to Try to Pick Up Girls in a Dungeon IV" -> "Is It Wrong to Try to Pick Up Girls in a Dungeon"
-        base = re.sub(r'\s+(?:season\s+\d+|s\d+|\d+(?:st|nd|rd|th)\s+season|part\s+\d+|cour\s+\d+)\b', '', clean, flags=re.IGNORECASE)
+        base = re.sub(r'\s+(?:season\s+\d+|s\d+|\d+(?:st|nd|rd|th)\s+season|part\s+\d+|act\.\d+|cour\s+\d+)\b', '', clean, flags=re.IGNORECASE)
         base = re.sub(r'\s+(?:x|ix|viii|vii|vi|v|iv|iii|ii|i)\b\s*$', '', base, flags=re.IGNORECASE)
         base = re.sub(r'[:\-–—]\s*.*$', '', base).strip()
         base = re.sub(r'\s+', ' ', base)
@@ -226,12 +227,23 @@ class AIHelper:
         if base and base.lower() not in [q.lower() for q in queries]:
             queries.append(base)
 
-        # Keyword pruning: extract top distinctive keywords
+        # Sub-clauses after colon/dash or 'I am / I'm'
+        parts = re.split(r'[:\-–—]\s*|\s+(?:I\'m|I am)\s+', clean, flags=re.IGNORECASE)
+        for p in parts:
+            p = p.strip()
+            if len(p) > 4 and p.lower() not in [q.lower() for q in queries]:
+                queries.append(p)
+
+        # Distinctive key phrase pruning: extract top 2-word and 3-word distinctive tokens
         tokens = [w for w in re.split(r'[\s_\-]+', clean) if w.lower() not in self._STOPWORDS and len(w) > 1]
         if len(tokens) >= 2:
-            kw_query = " ".join(tokens[:5])
-            if kw_query.lower() not in [q.lower() for q in queries]:
-                queries.append(kw_query)
+            q2 = " ".join(tokens[:2])
+            if q2.lower() not in [q.lower() for q in queries]:
+                queries.append(q2)
+            if len(tokens) >= 3:
+                q3 = " ".join(tokens[:3])
+                if q3.lower() not in [q.lower() for q in queries]:
+                    queries.append(q3)
 
         return queries
 

@@ -1,13 +1,12 @@
 # Anime Refresher
 
-Automated anime episode tracking, poster synchronization, and video downloader for local unwatched collections and the Animepahe mirror network. Features Camoufox stealth browser automation with Cloudflare Turnstile bypass, audio preference routing, in-process AI model integration, and real-time JSON streaming for external frontends (such as Flutter and Electron).
+Automated anime episode tracking and video downloader for local unwatched collections and the Animepahe mirror network. Features Camoufox stealth browser automation with Cloudflare Turnstile bypass, audio preference routing, in-process AI model integration, and real-time JSON streaming for external frontends (such as Flutter and Electron).
 
 ---
 
 ## Key Features
 
 - **Stealth Automation**: Built with Camoufox anti-detect browser engine for automated Cloudflare Turnstile bypass, JS evaluation, and Kwik direct CDN token decryption.
-- **Dedicated Poster Synchronization**: Automatically discovers series folders missing artwork, scrapes official high-resolution posters (`.anime-poster`) from Animepahe, and converts them to standard `poster.png` via Pillow under SafetyGuard validation.
 - **Audio Preference Prioritization**: Supports Subbed vs. Dubbed stream routing (`sub`, `dub`, `sub_strict`, `dub_strict`) across 1080p and 720p resolutions with retry tracking.
 - **In-Process AI Model Engine**: Self-contained local GGUF model manager (`Qwen 2.5 0.5B`) for intelligent episode number extraction and naming pattern matching with zero external dependencies.
 - **Real-Time Subprocess Streaming (`--start-automation-stream`)**: Emits single-line type-prepended JSON events on `stdout` with live percentage, byte counters, download status, and error logs for Flutter / UI integrations.
@@ -48,7 +47,6 @@ Running `python main.py` with **no arguments** displays the active settings and 
 | `(no arguments)` | Displays active settings and full command reference menu | `python main.py` |
 | `--start-automation` | Scrapes Animepahe and downloads missing anime episodes | `python main.py --start-automation` |
 | `--start-automation-stream` | Runs automation while emitting real-time JSON stream on `stdout` | `python main.py --start-automation-stream` |
-| `--synchronize-posters` | Scans anime folders and downloads missing `poster.png` images | `python main.py --synchronize-posters` |
 | `--dry-run` | Simulates execution without writing or downloading files | `python main.py --start-automation --dry-run` |
 | `--single-cycle` | Runs a single check/download pass and exits immediately | `python main.py --start-automation --single-cycle` |
 | `--maximum-downloads <N>` | Caps the number of episode downloads in a single session | `python main.py --start-automation --maximum-downloads 3` |
@@ -60,6 +58,13 @@ Running `python main.py` with **no arguments** displays the active settings and 
 | :--- | :--- | :--- |
 | `--set-target-directory "<PATH>"` | Updates anime storage directory in `.env` | `python main.py --set-target-directory "D:\Videos\Anime Unwatched"` |
 | `--set-audio-preference <PREF>` | Sets audio preference (`sub`, `dub`, `sub_strict`, `dub_strict`) | `python main.py --set-audio-preference dub` |
+| `--set-preferred-resolution <RES>` | Sets default download resolution (`1080`, `720`, `480`, `360`) | `python main.py --set-preferred-resolution 720` |
+| `--set-folder-as-title` | Enables strict folder-based naming | `python main.py --set-folder-as-title` |
+| `--unset-folder-as-title` | Disables strict folder-based naming | `python main.py --unset-folder-as-title` |
+| `--ignore <ITEMS...>` | Adds folders or files to persistent ignore list | `python main.py --ignore Others` |
+| `--list-ignored` | Displays all currently ignored items | `python main.py --list-ignored` |
+| `--unignore <ITEMS...>` | Removes items from ignore list | `python main.py --unignore Others` |
+| `--reset-ignored` | Clears all items from ignore list | `python main.py --reset-ignored` |
 | `--set-model-url "<URL>"` | Updates GGUF model download URL in `.env` | `python main.py --set-model-url "https://huggingface.co/..."` |
 | `--download-model` | Downloads and verifies the AI model file in `models/` | `python main.py --download-model` |
 | `--setup-task-scheduler` | Registers automated Windows Task Scheduler triggers | `python main.py --setup-task-scheduler` |
@@ -107,7 +112,7 @@ To register daily background runs (default: `06:00`, `12:00`, `22:00`):
 ```cmd
 python main.py --setup-task-scheduler
 ```
-To trigger on-demand automation with poster synchronization:
+To trigger on-demand automation:
 ```cmd
 C:\shortcuts\anime-refresher.bat
 ```

@@ -254,7 +254,6 @@ flutter build windows --release
 | **Start Tasks** | `--run-now` | Triggers an immediate refresh and download cycle. |
 | **NDJSON Output** | `--stream-ndjson` | Formats stdout output as single-line JSON events for GUI ingestion. |
 | **Dry Run Mode** | `--dry-run` | Performs scans and checks without downloading video files. |
-| **Download Posters** | `--download-posters` | Downloads series poster artwork alongside video episodes. |
 
 ### NDJSON Event Protocol
 

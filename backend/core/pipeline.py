@@ -24,7 +24,6 @@ from config import (
 from core.ai_helper import AIHelper
 from core.downloader import ResilientDownloader
 from core.model_manager import model_manager
-from core.poster_manager import PosterManager
 from core.reporter import error_reporter
 from core.safety import safety_guard
 from core.scanner import LocalScanner, AnimeFolder
@@ -71,7 +70,6 @@ def _render_series_box(
     local_count: int,
     available_count: int,
     missing_count: int,
-    poster_status: str,
     status_note: str = ""
 ) -> None:
     """Prints a clean, beautiful CLI summary card for an individual anime series."""
@@ -86,14 +84,12 @@ def _render_series_box(
     
     ep_info = f"Local: {local_count} | Available: {available_count} | Missing: {missing_count}"
     print(f"│ Episodes:   {ep_info}")
-    print(f"│ Artwork:    {poster_status}")
     if status_note:
         print(f"│ Status:     {status_note}")
     print(border_bot)
 
 async def _async_pipeline(
     start_automation: bool,
-    synchronize_posters: bool,
     stream_events: bool,
     dry_run: bool,
     single_cycle: bool,
@@ -101,7 +97,8 @@ async def _async_pipeline(
     preferred_resolution: str,
     headful_browser: bool,
     verbose: bool,
-    ignored: Optional[List[str]] = None
+    ignored: Optional[List[str]] = None,
+    folder_limit: Optional[int] = None
 ) -> int:
     """Core asynchronous per-series automation pipeline implementation."""
     headless_mode = False if headful_browser else HEADLESS
@@ -114,20 +111,12 @@ async def _async_pipeline(
     if not stream_events:
         logger.info("[Step 2/4] Verifying models/ directory and AI model file integrity...")
     if not MODELS_DIR.exists() or not model_manager.is_model_present():
-        logger.error("Automation halted: models/ directory or required AI model file does not exist.")
-        print("\n[ERROR] Automation halted: models/ directory or required AI model file does not exist!")
-        print(f"Target location: {MODEL_PATH}")
-        print("Please run 'python main.py --download-model' to install the required model before running automation.\n")
-        if stream_events:
-            emit_stream_event(
-                anime_name="System",
-                episode_num=0,
-                filename="",
-                status="failed",
-                short_error_message="models/ directory or required AI model file does not exist",
-                error_log_message="Please run 'python main.py --download-model' to install the model before running automation."
-            )
-        return 1
+        logger.warning(f"AI model not found at {MODEL_PATH}. Continuing execution using deterministic regex and heuristic matching fallback.")
+        if not stream_events:
+            print(f"[WARNING] AI model not found in models/. Continuing execution with deterministic regex & heuristic fallback.\n")
+    else:
+        if not stream_events:
+            logger.info("AI model verified successfully.")
 
     # Step 3: Scan Local Anime Collection with ignored filters
     # Combine DB ignored items and CLI ignored items
@@ -139,20 +128,25 @@ async def _async_pipeline(
     scanner = LocalScanner(TARGET_DIR, ignored=effective_ignored)
     local_folders = scanner.scan_unwatched()
 
+    if folder_limit is not None and folder_limit > 0:
+        local_folders = local_folders[:folder_limit]
+        if not stream_events:
+            logger.info(f"[--limit] Limiting scan to first {len(local_folders)} anime directories.")
+
     if not stream_events:
         logger.info(f"Found {len(local_folders)} active local anime series directories.")
 
     # Initialize components
     ai_helper = AIHelper()
     downloader = ResilientDownloader(temp_dir=TEMP_DIR)
-    poster_manager = PosterManager()
     state_manager = StateManager()
 
-    # Read folder_as_title preference from SQLite (default is True)
+    # Default behavior: episodes strictly follow parent folder names (<Folder Name> <01>.<ext>)
     use_folder_as_title = db_manager.get_bool_setting("folder_as_title", default=True)
 
     total_downloads_completed = 0
-    total_posters_saved = 0
+    consecutive_dl_failures = 0
+    consecutive_catalog_failures = 0
     error_reporter.clear()
 
     # Step 4: Iterative Per-Series Automation Loop
@@ -184,7 +178,6 @@ async def _async_pipeline(
             cached = db_manager.get_series_by_folder_path(folder_path)
             site_title = cached.get("site_title") if cached else None
             site_session = cached.get("site_session") if cached else None
-            poster_url = cached.get("poster_url") if cached else None
             series_id = cached.get("id") if cached else None
 
             # 2. First-time lookup: Multi-Tier Search & Candidate Ranking
@@ -214,7 +207,6 @@ async def _async_pipeline(
                         local_count=len(existing_eps),
                         available_count=0,
                         missing_count=0,
-                        poster_status="Skipped",
                         status_note="[!] No search results found (Logged to errors.html)"
                     )
                     continue
@@ -242,7 +234,6 @@ async def _async_pipeline(
                         local_count=len(existing_eps),
                         available_count=0,
                         missing_count=0,
-                        poster_status="Skipped",
                         status_note="[!] Title mismatch threshold not met (Logged to errors.html)"
                     )
                     continue
@@ -250,42 +241,14 @@ async def _async_pipeline(
                 # Match resolved! Persist mapping to SQLite
                 site_title = best_cand.get("title", "").strip()
                 site_session = best_cand.get("session", "").strip()
-                poster_url = best_cand.get("poster", "").strip()
                 series_id = db_manager.upsert_series(
                     folder_path=folder_path,
                     folder_name=folder_name,
                     site_title=site_title,
-                    site_session=site_session,
-                    poster_url=poster_url
+                    site_session=site_session
                 )
 
-            # 3. Synchronize Poster Artwork if requested
-            has_existing_poster = poster_manager.has_poster(folder_path)
-            if has_existing_poster:
-                poster_status_msg = "[OK] Present"
-            elif not synchronize_posters:
-                poster_status_msg = "Missing (Run --synchronize-posters)"
-            else:
-                if dry_run:
-                    poster_status_msg = "[DRY-RUN] Would download poster.png"
-                else:
-                    poster_bytes = await scraper.fetch_poster_for_anime(
-                        anime_session_or_id=site_session,
-                        poster_url=poster_url
-                    )
-                    if poster_bytes:
-                        saved = poster_manager.save_poster_from_bytes(poster_bytes, folder_path)
-                        if saved:
-                            total_posters_saved += 1
-                            db_manager.mark_poster_downloaded(series_id, True)
-                            poster_status_msg = "[OK] Saved poster.png"
-                        else:
-                            poster_status_msg = "[!] Poster save failed"
-                    else:
-                        poster_status_msg = "[!] Poster download failed"
-
-
-            # 4. Fetch Available Release Catalog
+            # 3. Fetch Available Release Catalog
             play_url_target = f"{scraper.active_base_url}/play/{site_session}"
             catalog_episodes: Dict[int, str] = {}
             fetch_error = False
@@ -295,7 +258,41 @@ async def _async_pipeline(
                 fetch_error = True
                 logger.warning(f"Could not retrieve catalog for '{folder_name}': {e}")
 
-            if not catalog_episodes and (fetch_error or len(existing_eps) > 0):
+            if fetch_error:
+                consecutive_catalog_failures += 1
+                # Cloudflare Circuit Breaker: If 2+ consecutive series fail catalog retrieval
+                if consecutive_catalog_failures >= 2:
+                    cooldown_sec = 30
+                    logger.warning(
+                        f"Detected {consecutive_catalog_failures} consecutive catalog retrieval failures. "
+                        f"Engaging Cloudflare circuit breaker: cooling down {cooldown_sec}s, purging session context, and rotating mirror..."
+                    )
+                    if stream_events:
+                        emit_stream_event(
+                            anime_name=folder_name,
+                            episode_num=0,
+                            filename="Circuit Breaker: Switching Mirror...",
+                            status="failed",
+                            progress_percentage=0.0
+                        )
+                    else:
+                        print(f"\n   [!] Cloudflare circuit breaker engaged: resetting session & switching mirror (waiting {cooldown_sec}s)...")
+
+                    await scraper._reset_browser_context()
+                    await scraper.rotate_mirror()
+                    await asyncio.sleep(cooldown_sec)
+                    consecutive_catalog_failures = 0
+
+                    # Retry catalog retrieval for this series on the newly rotated mirror
+                    play_url_target = f"{scraper.active_base_url}/play/{site_session}"
+                    try:
+                        logger.info(f"Retrying catalog retrieval for '{folder_name}' on rotated mirror: {scraper.active_base_url}")
+                        _, catalog_episodes = await asyncio.wait_for(scraper.get_show_episodes(play_url_target), timeout=45.0)
+                        fetch_error = False
+                    except Exception as retry_err:
+                        logger.warning(f"Retry on rotated mirror failed for '{folder_name}': {retry_err}")
+
+            if fetch_error:
                 missing_eps = []
                 status_note = "[!] Catalog Fetch Failed (Logged to errors.html)"
                 error_reporter.add_generic_error(
@@ -305,7 +302,12 @@ async def _async_pipeline(
                     suggestion="Verify network/mirror connection or Cloudflare clearance on Animepahe.",
                     base_url=scraper.active_base_url
                 )
+            elif not catalog_episodes:
+                consecutive_catalog_failures = 0
+                missing_eps = []
+                status_note = "[OK] 0 Available Episodes (Upcoming / None Released)"
             else:
+                consecutive_catalog_failures = 0
                 missing_eps = [ep for ep in sorted(catalog_episodes.keys()) if ep not in existing_eps]
                 status_note = "[OK] Fully Synchronized" if not missing_eps else f"Queued {len(missing_eps)} missing episode(s)"
 
@@ -318,11 +320,10 @@ async def _async_pipeline(
                     local_count=len(existing_eps),
                     available_count=len(catalog_episodes),
                     missing_count=len(missing_eps),
-                    poster_status=poster_status_msg,
                     status_note=status_note
                 )
 
-            # 5. Download Missing Episodes for This Series
+            # 4. Download Missing Episodes for This Series
             if start_automation and missing_eps:
                 for ep_num in missing_eps:
                     if maximum_downloads is not None and total_downloads_completed >= maximum_downloads:
@@ -366,23 +367,42 @@ async def _async_pipeline(
 
                     dl_success = False
                     dl_error = ""
-                    try:
-                        dl_success = await asyncio.wait_for(
-                            scraper.download_episode_to_temp(
-                                anime_title=folder_name,
-                                episode_num=ep_num,
-                                play_url=play_url,
-                                temp_target_file=temp_path,
-                                preferred_resolution=preferred_resolution
-                            ),
-                            timeout=300.0
-                        )
-                    except asyncio.TimeoutError:
-                        dl_error = "Download timed out (300s)"
-                    except Exception as err:
-                        dl_error = str(err)
+                    max_dl_attempts = 3
+                    for dl_attempt in range(1, max_dl_attempts + 1):
+                        try:
+                            dl_success = await asyncio.wait_for(
+                                scraper.download_episode_to_temp(
+                                    anime_title=folder_name,
+                                    episode_num=ep_num,
+                                    play_url=play_url,
+                                    temp_target_file=temp_path,
+                                    preferred_resolution=preferred_resolution
+                                ),
+                                timeout=300.0
+                            )
+                        except asyncio.TimeoutError:
+                            dl_error = "Download timed out (300s)"
+                            dl_success = False
+                        except Exception as err:
+                            dl_error = str(err)
+                            dl_success = False
+
+                        if dl_success and temp_path.exists():
+                            break
+
+                        if dl_attempt < max_dl_attempts:
+                            retry_delay = 5 * dl_attempt
+                            logger.warning(
+                                f"Download attempt {dl_attempt}/{max_dl_attempts} failed for '{folder_name}' Ep {ep_num} ({dl_error or 'Stream resolution failed'}). "
+                                f"Cooling down {retry_delay}s before retrying..."
+                            )
+                            if not stream_events:
+                                print(f"   [!] Attempt {dl_attempt} failed ({dl_error or 'Stream resolution failed'}). Retrying in {retry_delay}s...")
+                            await scraper._reset_page()
+                            await asyncio.sleep(retry_delay)
 
                     if dl_success and temp_path.exists():
+                        consecutive_dl_failures = 0
                         move_success = downloader.move_temp_to_target(temp_path, folder_path, final_filename)
                         if move_success:
                             total_downloads_completed += 1
@@ -406,6 +426,11 @@ async def _async_pipeline(
                                     downloaded_bytes=file_size,
                                     total_bytes=file_size
                                 )
+
+                            # Proactive browser hygiene: refresh page context every 5 downloads
+                            if total_downloads_completed % 5 == 0:
+                                logger.debug("Performing proactive browser page reset for resource hygiene...")
+                                await scraper._reset_page()
                         else:
                             error_reporter.add_generic_error(
                                 folder_name=folder_name,
@@ -413,12 +438,27 @@ async def _async_pipeline(
                                 message=f"Failed to move episode {ep_num} into folder under SafetyGuard validation."
                             )
                     else:
+                        consecutive_dl_failures += 1
                         error_reporter.add_generic_error(
                             folder_name=folder_name,
                             error_type="download_failed",
                             message=f"Failed to download episode {ep_num}: {dl_error or 'Stream resolution failed'}"
                         )
                         print(f"   ✗ Download failed for Ep {ep_num}: {dl_error or 'Stream resolution failed'}")
+
+                        # If 2 or more consecutive episodes fail, trigger safety cooldown, session reset, and mirror rotation
+                        if consecutive_dl_failures >= 2:
+                            cooldown_sec = 25
+                            logger.warning(
+                                f"Detected {consecutive_dl_failures} consecutive download failures. "
+                                f"Engaging safety cooldown for {cooldown_sec}s, resetting session, and rotating mirror..."
+                            )
+                            if not stream_events:
+                                print(f"   [!] Rate limit / challenge cooldown: resetting session, switching mirror (waiting {cooldown_sec}s)...")
+                            await scraper._reset_browser_context()
+                            await scraper.rotate_mirror()
+                            await asyncio.sleep(cooldown_sec)
+                            consecutive_dl_failures = 0
 
                     # Inter-download throttle
                     if REQUEST_DELAY_SECONDS > 0:
@@ -435,7 +475,6 @@ async def _async_pipeline(
         print("                      AUTOMATION RUN SUMMARY")
         print("=" * 76)
         print(f"  Episodes Downloaded:    {total_downloads_completed}")
-        print(f"  Posters Synchronized:   {total_posters_saved}")
         print(f"  Errors Recorded:        {len(error_reporter.errors)}")
         if error_reporter.has_errors():
             print(f"  Action Dashboard:       {ERRORS_HTML_PATH}")
@@ -445,14 +484,13 @@ async def _async_pipeline(
     db_manager.record_run_history(
         downloaded_count=total_downloads_completed,
         error_count=len(error_reporter.errors),
-        notes=f"Posters: {total_posters_saved}, Template: {'folder_as_title' if use_folder_as_title else 'ai_sequential'}"
+        notes=f"Template: {'folder_as_title' if use_folder_as_title else 'ai_sequential'}"
     )
 
     return 0
 
 def run_pipeline(
     start_automation: bool = True,
-    synchronize_posters: bool = False,
     stream_events: bool = False,
     dry_run: bool = False,
     single_cycle: bool = False,
@@ -460,14 +498,14 @@ def run_pipeline(
     preferred_resolution: str = PREFERRED_RESOLUTION,
     headful_browser: bool = False,
     verbose: bool = False,
-    ignored: Optional[List[str]] = None
+    ignored: Optional[List[str]] = None,
+    folder_limit: Optional[int] = None
 ) -> int:
     """Synchronous entry point that sets up logging and runs the async pipeline."""
     setup_logging(verbose=verbose, stream_events=stream_events)
     return asyncio.run(
         _async_pipeline(
             start_automation=start_automation,
-            synchronize_posters=synchronize_posters,
             stream_events=stream_events,
             dry_run=dry_run,
             single_cycle=single_cycle,
@@ -475,6 +513,7 @@ def run_pipeline(
             preferred_resolution=preferred_resolution,
             headful_browser=headful_browser,
             verbose=verbose,
-            ignored=ignored
+            ignored=ignored,
+            folder_limit=folder_limit
         )
     )

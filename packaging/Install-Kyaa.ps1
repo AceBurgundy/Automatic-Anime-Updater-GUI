@@ -45,7 +45,7 @@ $titleLabel.AutoSize = $true
 $headerPanel.Controls.Add($titleLabel)
 
 $subtitleLabel = New-Object System.Windows.Forms.Label
-$subtitleLabel.Text = "Automated Anime Episode & Poster Sync Engine"
+$subtitleLabel.Text = "Automated Anime Episode Sync Engine"
 $subtitleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $subtitleLabel.ForeColor = [System.Drawing.Color]::FromArgb(202, 196, 208)
 $subtitleLabel.Location = New-Object System.Drawing.Point(26, 44)

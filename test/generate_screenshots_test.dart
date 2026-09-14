@@ -67,40 +67,40 @@ void main() {
     for (final AppTab tab in tabs) {
       final GlobalKey repaintKey = GlobalKey();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          key: ValueKey<String>('app_${tab.name}'),
-          debugShowCheckedModeBanner: false,
-          theme: themeController.currentThemeData,
-          home: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: Center(
-              child: RepaintBoundary(
-                key: repaintKey,
-                child: SizedBox(
-                  width: 1000,
-                  height: 740,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(AppTokens.cornerExtraLarge),
-                    child: AppWindowScaffold(
-                      key: ValueKey<AppTab>(tab),
-                      themeController: themeController,
-                      initialTab: tab,
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          MaterialApp(
+            key: ValueKey<String>('app_${tab.name}'),
+            debugShowCheckedModeBanner: false,
+            theme: themeController.currentThemeData,
+            home: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Center(
+                child: RepaintBoundary(
+                  key: repaintKey,
+                  child: SizedBox(
+                    width: 1000,
+                    height: 740,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppTokens.cornerExtraLarge),
+                      child: AppWindowScaffold(
+                        key: ValueKey<AppTab>(tab),
+                        themeController: themeController,
+                        initialTab: tab,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      );
+        );
 
-      await tester.pump(const Duration(milliseconds: 300));
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        await tester.pump();
 
-      final RenderRepaintBoundary boundary =
-          repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-
-      await tester.runAsync(() async {
+        final RenderRepaintBoundary boundary =
+            repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
         final ui.Image image = await boundary.toImage(pixelRatio: 1.0);
         final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         expect(byteData, isNotNull);

@@ -14,7 +14,6 @@ from core.reporter import ErrorReporter
 from core.scanner import LocalScanner, AnimeFolder
 from core.downloader import ResilientDownloader
 from core.scraper import AnimepaheScraper
-from core.poster_manager import PosterManager
 from core.model_manager import ModelManager
 from core.safety import SafetyGuard, SafetyViolationError
 
@@ -249,33 +248,6 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         self.assertIsNotNone(opt_r3)
         self.assertEqual(opt_r3["href"], "http://example.com/720p-sub")
 
-    # =========================================================================
-    # 4. PosterManager & Image Conversion Stress Testing
-    # =========================================================================
-    def test_poster_manager_formats(self):
-        pm = PosterManager()
-        anime_folder = self.test_dir / "Solo Leveling"
-        anime_folder.mkdir(parents=True, exist_ok=True)
-
-        self.assertFalse(pm.has_poster(anime_folder))
-
-        # Test with RGB JPEG
-        img_rgb = Image.new("RGB", (300, 450), color=(100, 150, 200))
-        buf = io.BytesIO()
-        img_rgb.save(buf, format="JPEG")
-        self.assertTrue(pm.save_poster_from_bytes(buf.getvalue(), anime_folder))
-        self.assertTrue(pm.has_poster(anime_folder))
-
-        poster_file = anime_folder / "poster.png"
-        self.assertTrue(poster_file.exists())
-        with Image.open(poster_file) as opened_img:
-            self.assertEqual(opened_img.format, "PNG")
-
-        # Test invalid / tiny bytes rejected
-        bad_folder = self.test_dir / "Bad Anime"
-        bad_folder.mkdir(parents=True, exist_ok=True)
-        self.assertFalse(pm.save_poster_from_bytes(b"corrupted short bytes", bad_folder))
-        self.assertFalse(pm.has_poster(bad_folder))
 
     # =========================================================================
     # 5. LocalScanner Directory Scanning
@@ -496,8 +468,7 @@ class TestAnimeRefresherComponents(unittest.TestCase):
             folder_path=folder_p,
             folder_name="Solo Leveling",
             site_title="Solo Leveling",
-            site_session="a8f9c12345",
-            poster_url="https://animepahe.pw/posters/solo.jpg"
+            site_session="a8f9c12345"
         )
         self.assertIsInstance(series_id, int)
         rec = db.get_series_by_folder_path(folder_p)
@@ -584,6 +555,68 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         self.assertIn("Dungeon ni Deai IV", html_content)
         self.assertIn("Broken Anime", html_content)
         self.assertIn("ERRORS_DATA", html_content)
+
+    def test_downloader_touch_folder_metadata(self):
+        downloader = ResilientDownloader(temp_dir=self.temp_download_dir)
+        anime_dir = self.test_dir / "Anime Folder To Touch"
+        anime_dir.mkdir(parents=True, exist_ok=True)
+
+        # Set old timestamp
+        old_time = time.time() - 10000
+        import os
+        os.utime(str(anime_dir), (old_time, old_time))
+        self.assertLess(anime_dir.stat().st_mtime, time.time() - 5000)
+
+        # Touch metadata
+        success = downloader.touch_folder_metadata(anime_dir)
+        self.assertTrue(success)
+        # Should now be current time
+        self.assertAlmostEqual(anime_dir.stat().st_mtime, time.time(), delta=5.0)
+
+    def test_scanner_and_folder_limiting(self):
+        # Create 10 dummy anime folders
+        base_dir = self.test_dir / "Anime Unwatched Test"
+        base_dir.mkdir(parents=True, exist_ok=True)
+        for i in range(1, 11):
+            f = base_dir / f"Anime Series {i:02d}"
+            f.mkdir(parents=True, exist_ok=True)
+            (f / f"Anime Series {i:02d} 01.mp4").write_text("dummy", encoding="utf-8")
+
+        scanner = LocalScanner(target_dir=base_dir)
+        all_folders = scanner.scan_unwatched()
+        self.assertEqual(len(all_folders), 10)
+
+        # Apply limit to 5 folders
+        limited_5 = all_folders[:5]
+        self.assertEqual(len(limited_5), 5)
+        self.assertEqual(limited_5[0].name, "Anime Series 01")
+        self.assertEqual(limited_5[4].name, "Anime Series 05")
+
+    def test_scraper_mirror_rotation(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        sm = StateManager(state_file=self.state_file)
+        mirrors = ["https://animepahe.pw", "https://animepahe.org", "https://animepahe.com", "https://animepahe.ru"]
+        scraper = AnimepaheScraper(state_manager=sm, base_urls=mirrors)
+        self.assertEqual(scraper.active_base_url, "https://animepahe.pw")
+
+        # Mock async browser methods to avoid starting real browser
+        scraper._reset_browser_context = AsyncMock()
+        scraper._safe_goto = AsyncMock(return_value=(None, None))
+        scraper._handle_cloudflare_if_present = AsyncMock(return_value=True)
+
+        async def run_rotation_test():
+            m1 = await scraper.rotate_mirror()
+            self.assertEqual(m1, "https://animepahe.org")
+            m2 = await scraper.rotate_mirror()
+            self.assertEqual(m2, "https://animepahe.com")
+            m3 = await scraper.rotate_mirror()
+            self.assertEqual(m3, "https://animepahe.ru")
+            m4 = await scraper.rotate_mirror()
+            self.assertEqual(m4, "https://animepahe.pw")
+
+        asyncio.run(run_rotation_test())
 
 
 if __name__ == "__main__":

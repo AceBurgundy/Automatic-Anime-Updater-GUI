@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_tokens.dart';
+import '../../core/services/cli_bridge_service.dart';
 import '../../core/services/subprocess_service.dart';
 import '../../core/theme/app_palettes.dart';
 import '../common/app_icon_btn.dart';
@@ -322,31 +323,50 @@ class _SchedulingViewState extends State<SchedulingView> {
           ),
         ),
 
-        // Footer: Start Automation Large Squircle Button with Unique Animation
+        // Footer: Play / Pause Scheduler Action Buttons with Unique Micro-Animations
         Padding(
           padding: const EdgeInsets.only(top: 10.0),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: AppIconBtn(
-              icon: Icons.schedule_rounded,
-              tooltip: 'Start Automation',
-              isLarge: true,
-              variant: AppIconBtnVariant.primary,
-              animationType: AppIconAnimationType.rotateClock,
-              tokens: tokens,
-              onPressed: () {
-                final List<String> selectedDayNames = <String>[];
-                for (int index = 0; index < _daySelections.length; index++) {
-                  if (_daySelections[index]) {
-                    selectedDayNames.add(_days[index].name);
-                  }
-                }
-                SubprocessService.instance.startAutomationSchedule(
-                  activeDays: selectedDayNames,
-                  triggerTimes: _triggerTimes,
-                );
-              },
-            ),
+          child: ValueListenableBuilder<bool>(
+            valueListenable: CliBridgeService.instance.isSchedulerActiveNotifier,
+            builder: (BuildContext context, bool isSchedulerActive, _) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  AppIconBtn(
+                    icon: Icons.play_arrow_rounded,
+                    tooltip: 'Start Scheduler',
+                    isLarge: true,
+                    variant: isSchedulerActive ? AppIconBtnVariant.standard : AppIconBtnVariant.primary,
+                    animationType: AppIconAnimationType.shiftRight,
+                    tokens: tokens,
+                    onPressed: () {
+                      final List<String> selectedDayNames = <String>[];
+                      for (int index = 0; index < _daySelections.length; index++) {
+                        if (_daySelections[index]) {
+                          selectedDayNames.add(_days[index].name);
+                        }
+                      }
+                      SubprocessService.instance.startAutomationSchedule(
+                        activeDays: selectedDayNames,
+                        triggerTimes: _triggerTimes,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12.0),
+                  AppIconBtn(
+                    icon: Icons.pause_rounded,
+                    tooltip: 'Stop Scheduler',
+                    isLarge: true,
+                    variant: isSchedulerActive ? AppIconBtnVariant.primary : AppIconBtnVariant.standard,
+                    animationType: AppIconAnimationType.pulse,
+                    tokens: tokens,
+                    onPressed: () {
+                      SubprocessService.instance.stopAutomationSchedule();
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ],

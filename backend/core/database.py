@@ -54,8 +54,6 @@ class DatabaseManager:
                     site_title TEXT,
                     site_session TEXT,
                     site_url TEXT,
-                    poster_url TEXT,
-                    poster_downloaded INTEGER DEFAULT 0,
                     last_scanned_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -189,16 +187,12 @@ class DatabaseManager:
         folder_name: str,
         site_title: Optional[str] = None,
         site_session: Optional[str] = None,
-        site_url: Optional[str] = None,
-        poster_url: Optional[str] = None,
-        poster_downloaded: Optional[bool] = None
+        site_url: Optional[str] = None
     ) -> int:
         """Inserts or updates an anime series mapping. Returns series ID."""
         norm_path = str(Path(folder_path).resolve()).replace("\\", "/")
         with self._get_connection() as conn:
-            existing = conn.execute("SELECT id, poster_downloaded FROM anime_series WHERE folder_path = ?", (norm_path,)).fetchone()
-            
-            p_down = 1 if poster_downloaded else (existing["poster_downloaded"] if existing and poster_downloaded is None else 0)
+            existing = conn.execute("SELECT id FROM anime_series WHERE folder_path = ?", (norm_path,)).fetchone()
 
             if existing:
                 series_id = existing["id"]
@@ -208,27 +202,19 @@ class DatabaseManager:
                         site_title = COALESCE(?, site_title),
                         site_session = COALESCE(?, site_session),
                         site_url = COALESCE(?, site_url),
-                        poster_url = COALESCE(?, poster_url),
-                        poster_downloaded = ?,
                         last_scanned_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (folder_name, site_title, site_session, site_url, poster_url, p_down, series_id))
+                """, (folder_name, site_title, site_session, site_url, series_id))
             else:
                 cursor = conn.execute("""
                     INSERT INTO anime_series (
-                        folder_path, folder_name, site_title, site_session, site_url, poster_url, poster_downloaded, last_scanned_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (norm_path, folder_name, site_title, site_session, site_url, poster_url, p_down))
+                        folder_path, folder_name, site_title, site_session, site_url, last_scanned_at
+                    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (norm_path, folder_name, site_title, site_session, site_url))
                 series_id = cursor.lastrowid
 
             conn.commit()
             return series_id
-
-    def mark_poster_downloaded(self, series_id: int, downloaded: bool = True) -> None:
-        """Updates the poster_downloaded status for a series."""
-        with self._get_connection() as conn:
-            conn.execute("UPDATE anime_series SET poster_downloaded = ? WHERE id = ?", (1 if downloaded else 0, series_id))
-            conn.commit()
 
     # =========================================================================
     # DOWNLOADED EPISODES OPERATIONS
@@ -292,46 +278,66 @@ class DatabaseManager:
     # LEGACY JSON MIGRATION
     # =========================================================================
     def migrate_legacy_files_if_needed(self, state_file: Optional[Path] = None, ignored_file: Optional[Path] = None) -> None:
-        """Imports data from legacy state.json and ignored.json / exceptions.json if present."""
-        # 1. Migrate Ignored Items
-        if ignored_file and ignored_file.exists():
-            try:
-                content = ignored_file.read_text(encoding="utf-8")
-                data = json.loads(content)
-                if isinstance(data, list):
-                    items = [str(x).strip() for x in data if str(x).strip()]
-                    if items:
-                        added = self.add_ignored_items(items)
-                        logger.info(f"Migrated {added} ignored items from {ignored_file.name} to SQLite.")
-            except Exception as e:
-                logger.warning(f"Could not migrate legacy ignored file {ignored_file}: {e}")
+        """Imports data from legacy state.json and ignored.json / exceptions.json if present (runs once)."""
+        if self.get_setting("legacy_files_migrated") == "1":
+            return
 
-        # 2. Migrate State File (downloaded episodes & history)
-        if state_file and state_file.exists():
-            try:
-                content = state_file.read_text(encoding="utf-8")
-                data = json.loads(content)
-                if isinstance(data, dict):
-                    # Migrate downloaded episodes
-                    episodes_dict = data.get("downloaded_episodes", {})
-                    for folder_name, eps in episodes_dict.items():
-                        if not isinstance(eps, list):
-                            continue
-                        dummy_path = Path(f"D:/Videos/Anime Unwatched/{folder_name}")
-                        series_id = self.upsert_series(folder_path=dummy_path, folder_name=folder_name)
-                        for ep in eps:
-                            if isinstance(ep, int):
-                                self.record_downloaded_episode(series_id, ep, f"{folder_name} {ep:02d}.mp4")
+        with self._get_connection() as conn:
+            # 1. Migrate Ignored Items
+            if ignored_file and ignored_file.exists():
+                try:
+                    content = ignored_file.read_text(encoding="utf-8")
+                    data = json.loads(content)
+                    if isinstance(data, list):
+                        items = [str(x).strip() for x in data if str(x).strip()]
+                        for item in items:
+                            conn.execute("INSERT OR IGNORE INTO ignored_items (pattern) VALUES (?)", (item,))
+                        logger.info(f"Migrated {len(items)} ignored items from {ignored_file.name} to SQLite.")
+                except Exception as e:
+                    logger.warning(f"Could not migrate legacy ignored file {ignored_file}: {e}")
 
-                    # Migrate history
-                    history_list = data.get("history", [])
-                    for h in history_list:
-                        if isinstance(h, dict):
-                            self.record_run_history(
-                                downloaded_count=h.get("downloaded", 0),
-                                error_count=h.get("errors", 0),
-                                notes=h.get("notes", "Migrated from state.json")
-                            )
-                    logger.info(f"Migrated legacy state from {state_file.name} to SQLite.")
-            except Exception as e:
-                logger.warning(f"Could not migrate legacy state file {state_file}: {e}")
+            # 2. Migrate State File (downloaded episodes & history)
+            if state_file and state_file.exists():
+                try:
+                    content = state_file.read_text(encoding="utf-8")
+                    data = json.loads(content)
+                    if isinstance(data, dict):
+                        # Migrate downloaded episodes
+                        episodes_dict = data.get("downloaded_episodes", {})
+                        for folder_name, eps in episodes_dict.items():
+                            if not isinstance(eps, list):
+                                continue
+                            dummy_path = f"D:/Videos/Anime Unwatched/{folder_name}"
+                            conn.execute("""
+                                INSERT OR IGNORE INTO anime_series (folder_path, folder_name)
+                                VALUES (?, ?)
+                            """, (dummy_path, folder_name))
+                            cur = conn.execute("SELECT id FROM anime_series WHERE folder_path = ?", (dummy_path,))
+                            row = cur.fetchone()
+                            series_id = row[0] if row else None
+                            if series_id:
+                                for ep in eps:
+                                    if isinstance(ep, int):
+                                        conn.execute("""
+                                            INSERT OR IGNORE INTO episodes (series_id, episode_number, filename)
+                                            VALUES (?, ?, ?)
+                                        """, (series_id, ep, f"{folder_name} {ep:02d}.mp4"))
+
+                        # Migrate history
+                        history_list = data.get("history", [])
+                        for h in history_list:
+                            if isinstance(h, dict):
+                                conn.execute("""
+                                    INSERT INTO history (downloaded_count, error_count, notes)
+                                    VALUES (?, ?, ?)
+                                """, (
+                                    h.get("downloaded", 0),
+                                    h.get("errors", 0),
+                                    h.get("notes", "Migrated from state.json")
+                                ))
+                        logger.info(f"Migrated legacy state from {state_file.name} to SQLite.")
+                except Exception as e:
+                    logger.warning(f"Could not migrate legacy state file {state_file}: {e}")
+
+            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('legacy_files_migrated', '1')")
+            conn.commit()

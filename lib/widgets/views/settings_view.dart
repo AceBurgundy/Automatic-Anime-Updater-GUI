@@ -28,6 +28,7 @@ class SettingsView extends StatefulWidget {
 class _SettingsViewState extends State<SettingsView> {
   final TextEditingController _folderController =
       TextEditingController(text: 'D:/Anime/Animepahe_Library');
+  final TextEditingController _ignoreInputController = TextEditingController();
 
   String _selectedQuality = '1080p';
   String _selectedAudio = 'Subbed';
@@ -53,6 +54,7 @@ class _SettingsViewState extends State<SettingsView> {
     _loadInitialState();
     CliBridgeService.instance.configNotifier.addListener(_onConfigChanged);
     CliBridgeService.instance.loadInitialConfig();
+    SubprocessService.instance.listIgnored();
   }
 
   void _loadInitialState() {
@@ -83,6 +85,7 @@ class _SettingsViewState extends State<SettingsView> {
   void dispose() {
     CliBridgeService.instance.configNotifier.removeListener(_onConfigChanged);
     _folderController.dispose();
+    _ignoreInputController.dispose();
     super.dispose();
   }
 
@@ -154,6 +157,21 @@ class _SettingsViewState extends State<SettingsView> {
         }
       },
     );
+  }
+
+  Future<void> _handleAddIgnored() async {
+    final String text = _ignoreInputController.text.trim();
+    if (text.isEmpty) return;
+    _ignoreInputController.clear();
+    await SubprocessService.instance.addIgnoredItem(text);
+  }
+
+  Future<void> _handleRemoveIgnored(String item) async {
+    await SubprocessService.instance.removeIgnoredItem(item);
+  }
+
+  Future<void> _handleResetIgnored() async {
+    await SubprocessService.instance.resetIgnoredItems();
   }
 
   @override
@@ -478,6 +496,179 @@ class _SettingsViewState extends State<SettingsView> {
                 ),
               ),
             ],
+          ),
+
+          const SizedBox(height: 16.0),
+
+          // Section 5: Ignored Folders & Files
+          Container(
+            decoration: BoxDecoration(
+              color: cardBackgroundColor,
+              borderRadius: BorderRadius.circular(AppTokens.cornerMedium),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 18.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                // Header Row: Title & Clear All Action
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        AppIconSquare(
+                          icon: Icons.folder_off_rounded,
+                          tokens: tokens,
+                        ),
+                        const SizedBox(width: 12.0),
+                        Text(
+                          'Ignored Folders & Files',
+                          style: TextStyle(
+                            fontFamily: AppTokens.fontFamily,
+                            fontSize: 15.0,
+                            fontWeight: FontWeight.w500,
+                            color: onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                    ValueListenableBuilder<List<String>>(
+                      valueListenable: CliBridgeService.instance.ignoredItemsNotifier,
+                      builder: (BuildContext context, List<String> ignoredList, _) {
+                        if (ignoredList.isEmpty) return const SizedBox.shrink();
+                        return AppIconBtn(
+                          icon: Icons.delete_sweep_rounded,
+                          tooltip: 'Reset Ignored List',
+                          animationType: AppIconAnimationType.pulse,
+                          tokens: tokens,
+                          onPressed: _handleResetIgnored,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8.0),
+                Text(
+                  'Excluded anime folders or files will be skipped during automated library scans and downloads.',
+                  style: TextStyle(
+                    fontFamily: AppTokens.fontFamily,
+                    fontSize: 13.5,
+                    height: 1.45,
+                    color: onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 14.0),
+                // Input Row: Add Item TextField + Add Button
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Container(
+                        height: 48.0,
+                        decoration: BoxDecoration(
+                          color: inputBackgroundColor,
+                          borderRadius: BorderRadius.circular(AppTokens.cornerSmall),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        alignment: Alignment.centerLeft,
+                        child: TextField(
+                          controller: _ignoreInputController,
+                          onSubmitted: (_) => _handleAddIgnored(),
+                          style: TextStyle(
+                            fontFamily: AppTokens.codeFontFamily,
+                            fontSize: 13.5,
+                            color: onSurface,
+                          ),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: 'Enter folder or file name to ignore...',
+                            hintStyle: TextStyle(
+                              fontFamily: AppTokens.fontFamily,
+                              fontSize: 13.5,
+                              color: onSurfaceVariant,
+                            ),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12.0),
+                    AppIconBtn(
+                      icon: Icons.add_rounded,
+                      tooltip: 'Add to Ignore List',
+                      animationType: AppIconAnimationType.rotate90,
+                      variant: AppIconBtnVariant.primary,
+                      tokens: tokens,
+                      onPressed: _handleAddIgnored,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14.0),
+                // Dynamic Ignored Items List
+                ValueListenableBuilder<List<String>>(
+                  valueListenable: CliBridgeService.instance.ignoredItemsNotifier,
+                  builder: (BuildContext context, List<String> ignoredList, _) {
+                    if (ignoredList.isEmpty) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 16.0),
+                        decoration: BoxDecoration(
+                          color: inputBackgroundColor.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(AppTokens.cornerSmall),
+                        ),
+                        child: Text(
+                          'No items currently ignored. All library folders and files will be processed.',
+                          style: TextStyle(
+                            fontFamily: AppTokens.fontFamily,
+                            fontSize: 13.0,
+                            fontStyle: FontStyle.italic,
+                            color: onSurfaceVariant,
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      children: ignoredList.map((String item) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: inputBackgroundColor,
+                            borderRadius: BorderRadius.circular(AppTokens.cornerSmall),
+                          ),
+                          padding: const EdgeInsets.only(left: 12.0, right: 8.0, top: 6.0, bottom: 6.0),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Text(
+                                item,
+                                style: TextStyle(
+                                  fontFamily: AppTokens.codeFontFamily,
+                                  fontSize: 13.0,
+                                  color: onSurface,
+                                ),
+                              ),
+                              const SizedBox(width: 6.0),
+                              GestureDetector(
+                                onTap: () => _handleRemoveIgnored(item),
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    size: 16.0,
+                                    color: onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ],
       ),

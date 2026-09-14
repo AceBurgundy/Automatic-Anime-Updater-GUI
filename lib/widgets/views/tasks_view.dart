@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_tokens.dart';
+import '../../core/services/cli_bridge_service.dart';
 import '../../core/services/subprocess_service.dart';
 import '../../core/theme/app_palettes.dart';
 import '../common/app_icon_btn.dart';
@@ -337,112 +338,123 @@ class _TasksViewState extends State<TasksView> {
     final Color onSurface = tokens?.onSurface ?? colorScheme.onSurface;
     final Color onSurfaceVariant = tokens?.onSurfaceVariant ?? colorScheme.onSurfaceVariant;
 
-    final List<TaskItemData> filteredTasks = _tasks.where((TaskItemData task) {
-      if (_searchQuery.isEmpty) return true;
-      final String query = _searchQuery.toLowerCase();
-      return task.title.toLowerCase().contains(query) ||
-          task.stringFilename.toLowerCase().contains(query) ||
-          task.stringAnimeName.toLowerCase().contains(query);
-    }).toList();
+    return ValueListenableBuilder<List<TaskItemData>>(
+      valueListenable: CliBridgeService.instance.tasksNotifier,
+      builder: (BuildContext context, List<TaskItemData> liveTasks, _) {
+        final List<TaskItemData> activeTasks = liveTasks.isNotEmpty ? liveTasks : _demoTasks;
+        final List<TaskItemData> filteredTasks = activeTasks.where((TaskItemData task) {
+          if (_searchQuery.isEmpty) return true;
+          final String query = _searchQuery.toLowerCase();
+          return task.title.toLowerCase().contains(query) ||
+              task.stringFilename.toLowerCase().contains(query) ||
+              task.stringAnimeName.toLowerCase().contains(query);
+        }).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        // Header Row: Search Input + Action Buttons
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            // Search Input Field
-            Container(
-              width: 420.0,
-              height: AppTokens.searchInputHeight,
-              decoration: BoxDecoration(
-                color: searchBackground,
-                borderRadius: BorderRadius.circular(AppTokens.cornerFull),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Row(
-                children: <Widget>[
-                  Icon(
-                    Icons.search_rounded,
-                    size: 20.0,
-                    color: onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 12.0),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (String value) => setState(() => _searchQuery = value),
-                      style: TextStyle(
-                        fontFamily: AppTokens.fontFamily,
-                        fontSize: 14.5,
-                        color: onSurface,
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Search episode tasks...',
-                        hintStyle: TextStyle(
-                          fontFamily: AppTokens.fontFamily,
-                          fontSize: 14.5,
-                          color: onSurfaceVariant,
-                        ),
-                        border: InputBorder.none,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Actions Row with Unique Micro-Animations
+            // Header Row: Search Input + Action Buttons
             Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
-                AppIconBtn(
-                  icon: Icons.play_arrow_rounded,
-                  tooltip: 'Start Tasks',
-                  variant: AppIconBtnVariant.primary,
-                  animationType: AppIconAnimationType.shiftRight,
-                  tokens: tokens,
-                  onPressed: () => SubprocessService.instance.startTasks(),
+                // Search Input Field
+                Container(
+                  width: 420.0,
+                  height: AppTokens.searchInputHeight,
+                  decoration: BoxDecoration(
+                    color: searchBackground,
+                    borderRadius: BorderRadius.circular(AppTokens.cornerFull),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(
+                        Icons.search_rounded,
+                        size: 20.0,
+                        color: onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12.0),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (String value) => setState(() => _searchQuery = value),
+                          style: TextStyle(
+                            fontFamily: AppTokens.fontFamily,
+                            fontSize: 14.5,
+                            color: onSurface,
+                          ),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: 'Search episode tasks...',
+                            hintStyle: TextStyle(
+                              fontFamily: AppTokens.fontFamily,
+                              fontSize: 14.5,
+                              color: onSurfaceVariant,
+                            ),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 12.0),
-                AppIconBtn(
-                  icon: Icons.pause_rounded,
-                  tooltip: 'Pause Tasks',
-                  variant: AppIconBtnVariant.standard,
-                  animationType: AppIconAnimationType.pulse,
-                  tokens: tokens,
-                  onPressed: () => SubprocessService.instance.pauseTasks(),
+
+                // Actions Row with Unique Micro-Animations
+                ValueListenableBuilder<bool>(
+                  valueListenable: CliBridgeService.instance.isExecutingNotifier,
+                  builder: (BuildContext context, bool isExecuting, _) {
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        AppIconBtn(
+                          icon: Icons.play_arrow_rounded,
+                          tooltip: 'Start Tasks',
+                          variant: isExecuting ? AppIconBtnVariant.standard : AppIconBtnVariant.primary,
+                          animationType: AppIconAnimationType.shiftRight,
+                          tokens: tokens,
+                          onPressed: () => SubprocessService.instance.startTasks(),
+                        ),
+                        const SizedBox(width: 12.0),
+                        AppIconBtn(
+                          icon: Icons.stop_rounded,
+                          tooltip: 'Stop Tasks',
+                          variant: isExecuting ? AppIconBtnVariant.primary : AppIconBtnVariant.standard,
+                          animationType: AppIconAnimationType.pulse,
+                          tokens: tokens,
+                          onPressed: () => SubprocessService.instance.stopTasks(),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
-          ],
-        ),
 
-        const SizedBox(height: 18.0),
+            const SizedBox(height: 18.0),
 
-        // Scrollable Task List with Rounded Overflow Clipping
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppTokens.cornerMedium),
-            child: ListView.separated(
-              itemCount: filteredTasks.length,
-              separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 14.0),
-              itemBuilder: (BuildContext context, int index) {
-                final TaskItemData task = filteredTasks[index];
-                final bool isExpanded = _expandedTaskIds.contains(task.id);
-                return _TaskItemCard(
-                  task: task,
-                  isExpanded: isExpanded,
-                  tokens: tokens,
-                  onToggleExpand: () => _toggleExpanded(task.id),
-                );
-              },
+            // Scrollable Task List with Rounded Overflow Clipping
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppTokens.cornerMedium),
+                child: ListView.separated(
+                  itemCount: filteredTasks.length,
+                  separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 14.0),
+                  itemBuilder: (BuildContext context, int index) {
+                    final TaskItemData task = filteredTasks[index];
+                    final bool isExpanded = _expandedTaskIds.contains(task.id);
+                    return _TaskItemCard(
+                      task: task,
+                      isExpanded: isExpanded,
+                      tokens: tokens,
+                      onToggleExpand: () => _toggleExpanded(task.id),
+                    );
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }

@@ -65,6 +65,12 @@ class CliBridgeService {
   final ValueNotifier<CliConfigState> _configNotifier =
       ValueNotifier<CliConfigState>(const CliConfigState());
 
+  final ValueNotifier<List<String>> _ignoredItemsNotifier =
+      ValueNotifier<List<String>>(<String>[]);
+
+  Timer? _schedulerTimer;
+  final ValueNotifier<bool> _isSchedulerActiveNotifier = ValueNotifier<bool>(false);
+
   /// Stream of live episode task updates emitted from the CLI engine.
   Stream<TaskItemData> get taskEvents => _taskEventController.stream;
 
@@ -76,6 +82,12 @@ class CliBridgeService {
 
   /// Reactive configuration state.
   ValueListenable<CliConfigState> get configNotifier => _configNotifier;
+
+  /// Reactive list of currently ignored folders and files.
+  ValueListenable<List<String>> get ignoredItemsNotifier => _ignoredItemsNotifier;
+
+  /// Reactive boolean indicating whether the background scheduler is currently active.
+  ValueListenable<bool> get isSchedulerActiveNotifier => _isSchedulerActiveNotifier;
 
   /// Whether the automation engine is currently executing.
   bool get isAutomationRunning => _isAutomationRunning;
@@ -206,6 +218,8 @@ class CliBridgeService {
         isModelInstalled: modelPresent,
         modelSizeMb: modelSizeMb,
       );
+
+      unawaited(listIgnored());
     } catch (e) {
       debugPrint('[CliBridgeService] Notice loading initial config: $e');
     }
@@ -213,10 +227,7 @@ class CliBridgeService {
 
   /// Starts the automation pipeline subprocess in real-time stream mode.
   Future<void> startAutomation({
-    bool synchronizePosters = true,
     String? preferredResolution,
-    int? maxDownloads,
-    bool dryRun = false,
   }) async {
     if (_isAutomationRunning) {
       debugPrint('[CliBridgeService] Automation is already active.');
@@ -232,23 +243,11 @@ class CliBridgeService {
       '--start-automation-stream',
     ];
 
-    if (synchronizePosters) {
-      args.add('--synchronize-posters');
-    }
-
     if (preferredResolution != null && preferredResolution.isNotEmpty) {
       args.addAll(<String>[
         '--preferred-resolution',
         preferredResolution.replaceAll('p', ''),
       ]);
-    }
-
-    if (maxDownloads != null && maxDownloads > 0) {
-      args.addAll(<String>['--maximum-downloads', maxDownloads.toString()]);
-    }
-
-    if (dryRun) {
-      args.add('--dry-run');
     }
 
     debugPrint('[CliBridgeService] Launching automation: $pythonBin ${args.join(" ")}');
@@ -449,12 +448,103 @@ class CliBridgeService {
     _configNotifier.value = _configNotifier.value.copyWith(preferredAudio: audio);
   }
 
-  /// Toggles folder-indexed template (`<Folder Name> <01>.<ext>`) in SQLite.
+  /// Folder-indexed template is default and hardcoded.
   Future<void> setFolderAsTitle(bool enabled) async {
-    await _executeCliConfigCommand(<String>[
-      enabled ? '--set-folder-as-title' : '--unset-folder-as-title'
-    ]);
-    _configNotifier.value = _configNotifier.value.copyWith(folderAsTitle: enabled);
+    _configNotifier.value = _configNotifier.value.copyWith(folderAsTitle: true);
+  }
+
+  /// Fetches and updates the list of ignored items via `main.py --list-ignored`.
+  Future<List<String>> listIgnored() async {
+    final ProcessResult? result = await _executeCliConfigCommand(<String>['--list-ignored']);
+    final List<String> items = <String>[];
+    if (result != null && result.exitCode == 0) {
+      final String stdout = result.stdout as String? ?? '';
+      final List<String> lines = stdout.split(RegExp(r'\r?\n'));
+      for (final String rawLine in lines) {
+        final String trimmed = rawLine.trim();
+        if (trimmed.startsWith('- ')) {
+          final String item = trimmed.substring(2).trim();
+          if (item.isNotEmpty && !items.contains(item)) {
+            items.add(item);
+          }
+        }
+      }
+    }
+    _ignoredItemsNotifier.value = items;
+    return items;
+  }
+
+  /// Adds a folder or file to the ignore list via `main.py --ignore <item>`.
+  Future<void> addIgnoredItem(String item) async {
+    final String clean = item.trim();
+    if (clean.isEmpty) return;
+    await _executeCliConfigCommand(<String>['--ignore', clean]);
+    await listIgnored();
+  }
+
+  /// Removes an item from the ignore list via `main.py --unignore <item>`.
+  Future<void> removeIgnoredItem(String item) async {
+    final String clean = item.trim();
+    if (clean.isEmpty) return;
+    await _executeCliConfigCommand(<String>['--unignore', clean]);
+    await listIgnored();
+  }
+
+  /// Clears all items from the ignore list via `main.py --reset-ignored`.
+  Future<void> resetIgnoredItems() async {
+    await _executeCliConfigCommand(<String>['--reset-ignored']);
+    _ignoredItemsNotifier.value = <String>[];
+  }
+
+  /// Starts the background schedule, registers Windows task scheduler, and starts internal periodic timer.
+  Future<void> startScheduler({
+    required List<String> activeDays,
+    required List<String> triggerTimes,
+  }) async {
+    await setupTaskScheduler();
+    _isSchedulerActiveNotifier.value = true;
+    _schedulerTimer?.cancel();
+
+    _schedulerTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _checkScheduleTriggers(activeDays: activeDays, triggerTimes: triggerTimes);
+    });
+  }
+
+  /// Stops the background scheduler, unregisters Windows task scheduler, and cancels timer.
+  Future<void> stopScheduler() async {
+    _schedulerTimer?.cancel();
+    _schedulerTimer = null;
+    _isSchedulerActiveNotifier.value = false;
+    await removeTaskScheduler();
+  }
+
+  void _checkScheduleTriggers({
+    required List<String> activeDays,
+    required List<String> triggerTimes,
+  }) {
+    if (!_isSchedulerActiveNotifier.value || _isAutomationRunning) return;
+
+    final DateTime now = DateTime.now();
+    const List<String> weekdayNames = <String>[
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+    ];
+    final String currentDay = weekdayNames[now.weekday - 1];
+
+    if (!activeDays.contains(currentDay)) return;
+
+    final int hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final String hourStr = hour.toString().padLeft(2, '0');
+    final String minStr = now.minute.toString().padLeft(2, '0');
+    final String period = now.hour >= 12 ? 'PM' : 'AM';
+    final String currentTimeFormatted = '$hourStr:$minStr $period';
+
+    for (final String targetTime in triggerTimes) {
+      if (currentTimeFormatted.toUpperCase() == targetTime.trim().toUpperCase()) {
+        debugPrint('[CliBridgeService Scheduler] Trigger matched: $currentTimeFormatted on $currentDay. Starting automation...');
+        startAutomation();
+        break;
+      }
+    }
   }
 
   /// Registers automated triggers in Windows Task Scheduler.

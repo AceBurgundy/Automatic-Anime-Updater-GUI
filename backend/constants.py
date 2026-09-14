@@ -14,12 +14,6 @@ DEFAULT_MODEL_URL = (
 MODEL_MIN_SIZE_BYTES = 300 * 1024 * 1024  # 300 MB minimum verification threshold
 
 # =====================================================================
-# POSTER & IMAGE DEFAULTS
-# =====================================================================
-POSTER_FILENAME = "poster.png"
-POSTER_CSS_SELECTOR = ".anime-poster a, .anime-poster img"
-
-# =====================================================================
 # SYSTEM & PIPELINE DEFAULTS
 # =====================================================================
 DEFAULT_TARGET_FOLDER_NAME = "Anime Unwatched"
