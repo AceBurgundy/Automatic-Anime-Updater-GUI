@@ -15,9 +15,8 @@
 
 [📥 Download Installer](#-installation-guide) • [✨ Key Features](#-key-features) • [🎨 UI Tour](#-ui--visual-tour) • [🚀 Usage Guide](#-usage--step-by-step-workflows) • [⚙️ CLI Architecture](#️-cli-engine-architecture--parameter-reference) • [👤 Author](#-author--maintainer)
 
----
-
 </div>
+## Check the [Webpage!!](https://kyaa-anime.vercel.app/)
 
 ## 📖 Table of Contents
 
@@ -49,8 +48,6 @@
 - [📄 License](#-license)
 - [👤 Author & Maintainer](#-author--maintainer)
 
----
-
 ## 🌟 Overview
 
 **Kyaa!!** is an intelligent desktop companion designed for anime collectors and enthusiasts. Keeping an unwatched anime library up to date across dozens of currently airing shows is tedious and error-prone. **Kyaa!!** bridges a high-performance Python scraping and episode-parsing engine with a fluent, frameless Flutter GUI.
@@ -61,12 +58,10 @@
 - ⚡ **Real-Time NDJSON Streaming:** Features responsive visual feedback with live download speeds, percentage bars, and error logs without polling.
 - 💎 **Frameless AMOLED Aesthetics:** Crafted with rounded corners ($32\text{ px}$ radius), smooth hover transitions, squircle micro-interactions, and four vibrant dark themes.
 
----
-
 ## ✨ Key Features
 
 | Feature | Description |
-| :--- | :--- |
+| | |
 | **⚡ Frameless Title Bar** | Custom draggable top window bar with smooth minimize and close window controls. |
 | **📊 Real-time Tasks Dashboard** | Searchable task list featuring state badges (*Completed*, *In Progress*, *Queued*, *Failed*), live MB/s bandwidth indicators, and multi-line error inspection. |
 | **🤖 AI Episode Parser** | Integrated download manager for the HuggingFace / GGUF episode parsing model ensuring accurate file-to-episode matching. |
@@ -75,8 +70,6 @@
 | **⏰ Automated Scheduling** | Individual day buttons (*M, T, W, T, F, S, S*), *Everyday* master toggle, and 12-hour time triggers (*e.g., 04:00 AM, 12:30 PM, 08:00 PM*). |
 | **🎨 4 AMOLED Themes** | Instantly switch between **Mango Yellow**, **Purple Iris**, **Ocean Cyan**, and **Emerald Mint** with persistent local state. |
 | **📦 Zero-Dependency Packaging** | Built-in Windows installer wizard (`Install-Kyaa.ps1` / `Setup.bat` / Inno Setup) with auto-creation of Start Menu and Desktop shortcuts. |
-
----
 
 ## 🏗️ System Architecture
 
@@ -103,8 +96,6 @@ flowchart TD
     F -- "Stream Controller / ValueNotifier" --> B
 ```
 
----
-
 ## 🎨 UI & Visual Tour
 
 ### 1. 📋 Tasks View
@@ -118,8 +109,6 @@ The **Tasks View** is the primary monitoring cockpit. It provides real-time prog
 - **Micro-Animations:** Play and Pause action buttons with hover-shift animations.
 - **State Badges:** Color-coded status badges for completed, running, queued, and failed downloads.
 
----
-
 ### 2. ⚙️ Settings View
 The **Settings View** manages local filesystem paths, AI model downloading, and video stream preferences.
 
@@ -131,8 +120,6 @@ The **Settings View** manages local filesystem paths, AI model downloading, and 
 - **Model Downloader:** Live progress bar tracking the initialization of the episode parser.
 - **Resolution & Audio Pills:** One-tap selectors for 1080p/720p/480p/360p and Subbed/Dubbed streams.
 
----
-
 ### 3. 📅 Scheduling View
 The **Scheduling View** allows configuring background sync automation so you never miss a newly aired release.
 
@@ -142,8 +129,6 @@ The **Scheduling View** allows configuring background sync automation so you nev
 
 - **Everyday Toggle & Day Squircles:** Toggle all days at once or isolate specific days (*Monday through Sunday*).
 - **12-Hour Trigger Time Pills:** Add multiple trigger times (*e.g., 04:00 AM, 12:30 PM, 08:00 PM*) using a native Material 3 time dialog.
-
----
 
 ### 4. 🎨 Themes View
 The **Themes View** provides four AMOLED-optimized color schemes with live interactive preview cards.
@@ -156,8 +141,6 @@ The **Themes View** provides four AMOLED-optimized color schemes with live inter
 - **Purple Iris:** Deep neon purple accents.
 - **Ocean Cyan:** Cool electric cyan tones.
 - **Emerald Mint:** Calming neon mint hues.
-
----
 
 ## 📥 Installation Guide
 
@@ -172,16 +155,12 @@ The **Themes View** provides four AMOLED-optimized color schemes with live inter
    - Create a Start Menu shortcut and Desktop icon.
    - Launch `Kyaa!!` automatically.
 
----
-
 ### Option B: Standalone Portable Package
 
 If you prefer not to install the application system-wide:
 1. Download `KyaaApp_v1.0.0_Standalone.zip`.
 2. Extract the contents anywhere on your system.
 3. Launch **`kyaa_app.exe`** directly.
-
----
 
 ### Option C: Build from Source
 
@@ -206,8 +185,6 @@ flutter build windows --release
 # 4. Built executable location:
 # build/windows/x64/runner/Release/kyaa_app.exe
 ```
-
----
 
 ## 🚀 Usage & Step-by-Step Workflows
 
@@ -238,8 +215,6 @@ flutter build windows --release
 3. Watch live episode progress bars and bandwidth speeds.
 4. If an episode fails due to network disruption, click the dropdown arrow to expand detailed stream metadata and click the terminal icon to inspect the exact error traceback.
 
----
-
 ## 🛠️ CLI Engine Architecture & Parameter Reference
 
 `kyaa_app` communicates directly with its integrated Python backend engine located in `backend/` (or a standalone CLI) as a background worker process.
@@ -247,7 +222,7 @@ flutter build windows --release
 ### GUI-to-CLI Flag Mapping
 
 | GUI Setting / Action | CLI Flag / Argument | Description |
-| :--- | :--- | :--- |
+| | | |
 | **Anime Folder** | `--library-dir "<path>"` | Root directory containing local anime series subfolders. |
 | **Preferred Quality** | `--quality 1080p\|720p\|480p\|360p` | Preferred video stream resolution. |
 | **Audio Preference** | `--audio sub\|dub` | Audio track language selection. |
@@ -276,18 +251,14 @@ During execution, the CLI emits structured JSON events to `stdout`:
 }
 ```
 
----
-
 ## 🎨 Dynamic AMOLED Theme Palette
 
 | Theme | Accent Hex | Background Hex | Surface Container |
-| :--- | :--- | :--- | :--- |
+| | | | |
 | **Mango Yellow** | `#FFE043` | `#0A0A0A` | `#1A1A1A` |
 | **Purple Iris** | `#A855F7` | `#0A0A0A` | `#181524` |
 | **Ocean Cyan** | `#06B6D4` | `#0A0A0A` | `#121E24` |
 | **Emerald Mint** | `#10B981` | `#0A0A0A` | `#12241E` |
-
----
 
 ## 🧪 Testing & Verification
 
@@ -300,8 +271,6 @@ flutter test
 # Run the automated UI screenshot generator
 flutter test test/generate_screenshots_test.dart
 ```
-
----
 
 ## 🔧 Troubleshooting & FAQ
 
@@ -320,8 +289,6 @@ flutter test test/generate_screenshots_test.dart
 <p>Configuration settings and SQLite databases are stored in <code>%LOCALAPPDATA%\KyaaApp\config.db</code> and <code>anime_refresher.log</code>.</p>
 </details>
 
----
-
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome!
@@ -331,13 +298,9 @@ Contributions, issues, and feature requests are welcome!
 4. Push to the Branch (`git push origin feature/AmazingFeature`).
 5. Open a Pull Request.
 
----
-
 ## 📄 License
 
 This project is licensed under the **Mozilla Public License 2.0 (MPL-2.0)**. See the [LICENSE.md](LICENSE.md) file for details.
-
----
 
 ## 👤 Author & Maintainer
 
