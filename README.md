@@ -62,7 +62,7 @@
 ## ✨ Key Features
 
 | Feature | Description |
-| | |
+| --- | --- |
 | **⚡ Frameless Title Bar** | Custom draggable top window bar with smooth minimize and close window controls. |
 | **📊 Real-time Tasks Dashboard** | Searchable task list featuring state badges (*Completed*, *In Progress*, *Queued*, *Failed*), live MB/s bandwidth indicators, and multi-line error inspection. |
 | **🤖 AI Episode Parser** | Integrated download manager for the HuggingFace / GGUF episode parsing model ensuring accurate file-to-episode matching. |
@@ -223,7 +223,7 @@ flutter build windows --release
 ### GUI-to-CLI Flag Mapping
 
 | GUI Setting / Action | CLI Flag / Argument | Description |
-| | | |
+|---|---|---|
 | **Anime Folder** | `--library-dir "<path>"` | Root directory containing local anime series subfolders. |
 | **Preferred Quality** | `--quality 1080p\|720p\|480p\|360p` | Preferred video stream resolution. |
 | **Audio Preference** | `--audio sub\|dub` | Audio track language selection. |
@@ -255,7 +255,7 @@ During execution, the CLI emits structured JSON events to `stdout`:
 ## 🎨 Dynamic AMOLED Theme Palette
 
 | Theme | Accent Hex | Background Hex | Surface Container |
-| | | | |
+| --- | --- | --- | --- |
 | **Mango Yellow** | `#FFE043` | `#0A0A0A` | `#1A1A1A` |
 | **Purple Iris** | `#A855F7` | `#0A0A0A` | `#181524` |
 | **Ocean Cyan** | `#06B6D4` | `#0A0A0A` | `#121E24` |
@@ -305,13 +305,9 @@ This project is licensed under the **Mozilla Public License 2.0 (MPL-2.0)**. See
 
 ## 👤 Author & Maintainer
 
-<div align="center">
-
 **Sam Adrian Sabalo**  
 *Full Stack Developer & Software Engineer*
 
-[![GitHub](https://img.shields.io/badge/GitHub-AceBurgundy-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/AceBurgundy)
-[![Website](https://img.shields.io/badge/Portfolio-sam--sabalo.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://sam-sabalo.vercel.app)
-[![Email](https://img.shields.io/badge/Email-samadriansabalo99%40gmail.com-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:samadriansabalo99@gmail.com)
-
-</div>
+- **GitHub:** [AceBurgundy](https://github.com/AceBurgundy)
+- **Website:** [sam-sabalo.vercel.app](https://sam-sabalo.vercel.app)
+- **Email:** [samadriansabalo99@gmail.com](mailto:samadriansabalo99@gmail.com)
