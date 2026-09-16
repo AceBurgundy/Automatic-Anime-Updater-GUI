@@ -16,7 +16,8 @@
 [📥 Download Installer](#-installation-guide) • [✨ Key Features](#-key-features) • [🎨 UI Tour](#-ui--visual-tour) • [🚀 Usage Guide](#-usage--step-by-step-workflows) • [⚙️ CLI Architecture](#️-cli-engine-architecture--parameter-reference) • [👤 Author](#-author--maintainer)
 
 </div>
-## Check the [Webpage!!](https://kyaa-anime.vercel.app/)
+
+## [Check the Webpage!!](https://kyaa-anime.vercel.app/)
 
 ## 📖 Table of Contents
 
