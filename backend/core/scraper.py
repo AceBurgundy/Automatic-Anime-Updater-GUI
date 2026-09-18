@@ -744,22 +744,33 @@ class AnimepaheScraper:
         preferred_resolution: Optional[str] = None
     ) -> Optional[Dict[str, str]]:
         """
-        Selects download option based on AUDIO_PREFERENCE ('sub', 'dub', 'sub_strict', 'dub_strict')
-        and PREFERRED_RESOLUTION ('1080', '720', '480', '360') with closest-resolution fallback routing.
+        Select download source option based on audio preference and resolution routing.
+
+        Parameters
+        ----------
+        options (List[Dict[str, str]]): List of available download source options.
+        anime_title (str): Title of the anime series.
+        episode_num (int): Episode number being evaluated.
+        preferred_resolution (Optional[str]): Explicit preferred resolution ('1080', '720', '480', '360').
+
+        Returns
+        -------
+        Optional[Dict[str, str]]: Selected source option dictionary, or None if awaiting release.
         """
         if not options:
             return None
 
-        subbed_options = [
-            opt for opt in options
-            if not re.search(r'\b(eng|dub|english)\b', opt["text"], re.IGNORECASE)
+        subbed_options: List[Dict[str, str]] = [
+            option for option in options
+            if not re.search(r'\b(eng|dub|english)\b', option["text"], re.IGNORECASE)
         ]
-        dubbed_options = [
-            opt for opt in options
-            if re.search(r'\b(eng|dub|english)\b', opt["text"], re.IGNORECASE)
+        dubbed_options: List[Dict[str, str]] = [
+            option for option in options
+            if re.search(r'\b(eng|dub|english)\b', option["text"], re.IGNORECASE)
         ]
 
         # Strict modes
+        usable_options: List[Dict[str, str]]
         if self.audio_preference == "sub_strict":
             usable_options = subbed_options
             if not usable_options:
@@ -779,47 +790,47 @@ class AnimepaheScraper:
         if not usable_options:
             usable_options = options
 
-        explicit_res = preferred_resolution or self.preferred_resolution
-        if explicit_res:
-            target_res = explicit_res.lower().rstrip("p")
-            if target_res not in RESOLUTION_PRIORITY_MAP:
-                target_res = DEFAULT_PREFERRED_RESOLUTION
+        explicit_resolution: Optional[str] = preferred_resolution or self.preferred_resolution
+        if explicit_resolution:
+            target_resolution: str = explicit_resolution.lower().rstrip("p")
+            if target_resolution not in RESOLUTION_PRIORITY_MAP:
+                target_resolution = DEFAULT_PREFERRED_RESOLUTION
 
-            exact_res_tag = f"{target_res}p"
-            priority_list = RESOLUTION_PRIORITY_MAP.get(target_res, ["1080p", "720p", "480p", "360p"])
+            exact_resolution_tag: str = f"{target_resolution}p"
+            priority_list: List[str] = RESOLUTION_PRIORITY_MAP.get(target_resolution, ["1080p", "720p", "480p", "360p"])
 
             # Check for exact preferred resolution
-            has_exact = any(exact_res_tag in opt["text"] for opt in usable_options)
+            has_exact: bool = any(exact_resolution_tag in option["text"] for option in usable_options)
             if has_exact:
-                for opt in usable_options:
-                    if exact_res_tag in opt["text"]:
+                for option in usable_options:
+                    if exact_resolution_tag in option["text"]:
                         self.state_manager.reset_viewed_count(anime_title, episode_num)
-                        logger.info(f"Selected exact preferred {exact_res_tag} ({self.audio_preference.upper()}): '{opt['text']}'")
-                        return opt
+                        logger.info(f"Selected exact preferred {exact_resolution_tag} ({self.audio_preference.upper()}): '{option['text']}'")
+                        return option
 
             # Exact preferred resolution missing -> Execute Wait & Retry Protocol
-            viewed_count = self.state_manager.increment_viewed_count(anime_title, episode_num)
-            logger.info(f"{exact_res_tag} missing for '{anime_title}' Ep {episode_num}. Retry count: {viewed_count}/{FALLBACK_MAX_RETRIES}")
+            viewed_count: int = self.state_manager.increment_viewed_count(anime_title, episode_num)
+            logger.info(f"{exact_resolution_tag} missing for '{anime_title}' Ep {episode_num}. Retry count: {viewed_count}/{FALLBACK_MAX_RETRIES}")
 
             if viewed_count < FALLBACK_MAX_RETRIES:
-                logger.info(f"Skipping episode {episode_num} for this run awaiting {exact_res_tag} release.")
+                logger.info(f"Skipping episode {episode_num} for this run awaiting {exact_resolution_tag} release.")
                 return None
 
             # Threshold reached -> Follow explicit fallback routing
-            logger.info(f"Threshold reached ({viewed_count} runs). Falling back according to {exact_res_tag} priority routing: {priority_list}")
-            for res_tag in priority_list:
-                match = next((opt for opt in usable_options if res_tag in opt["text"]), None)
-                if match:
-                    logger.info(f"Selected fallback resolution '{res_tag}': '{match['text']}'")
-                    return match
+            logger.info(f"Threshold reached ({viewed_count} runs). Falling back according to {exact_resolution_tag} priority routing: {priority_list}")
+            for resolution_tag in priority_list:
+                matched_option: Optional[Dict[str, str]] = next((option for option in usable_options if resolution_tag in option["text"]), None)
+                if matched_option:
+                    logger.info(f"Selected fallback resolution '{resolution_tag}': '{matched_option['text']}'")
+                    return matched_option
         else:
             # Highest Quality First: 1080p -> 720p -> 480p -> 360p
-            highest_quality_routing = ["1080p", "720p", "480p", "360p"]
-            for res_tag in highest_quality_routing:
-                match = next((opt for opt in usable_options if res_tag in opt["text"]), None)
-                if match:
-                    logger.info(f"Highest Quality First selected '{res_tag}': '{match['text']}'")
-                    return match
+            highest_quality_routing: List[str] = ["1080p", "720p", "480p", "360p"]
+            for resolution_tag in highest_quality_routing:
+                matched_option: Optional[Dict[str, str]] = next((option for option in usable_options if resolution_tag in option["text"]), None)
+                if matched_option:
+                    logger.info(f"Highest Quality First selected '{resolution_tag}': '{matched_option['text']}'")
+                    return matched_option
 
         # Final fallback to first usable option
         if usable_options:
@@ -830,36 +841,49 @@ class AnimepaheScraper:
 
     async def get_show_episodes(self, play_url: str) -> Tuple[str, Dict[int, str]]:
         """
-        Retrieves all available episode numbers and play URLs for a series using Release API and DOM.
+        Retrieve all available episode numbers and play URLs for a series using Release API and DOM.
+
+        Parameters
+        ----------
+        play_url (str): The episode play URL or anime overview URL.
+
+        Returns
+        -------
+        Tuple[str, Dict[int, str]]: Series title and mapping of episode numbers to play URLs.
+
+        Raises
+        ------
+        RuntimeError: If the active mirror is inaccessible or blocked by Cloudflare challenge.
         """
         page = await self._create_page()
         try:
             # Normalize play_url to active mirror domain
-            for u in self.base_urls:
-                if play_url.startswith(u):
-                    play_url = play_url.replace(u, self.active_base_url, 1)
+            mirror_url: str
+            for mirror_url in self.base_urls:
+                if play_url.startswith(mirror_url):
+                    play_url = play_url.replace(mirror_url, self.active_base_url, 1)
                     break
 
             logger.info(f"Accessing episode catalog for: {play_url}")
-            on_mirror = await self._ensure_on_mirror(page)
+            on_mirror: bool = await self._ensure_on_mirror(page)
             if not on_mirror:
                 raise RuntimeError(f"Mirror {self.active_base_url} is inaccessible or blocked by Cloudflare challenge")
 
             # Extract anime session directly from play_url
-            anime_session = ""
-            m = re.search(r'/(?:play|anime)/([a-zA-Z0-9\-]+)', play_url)
-            if m:
-                anime_session = m.group(1)
+            anime_session: str = ""
+            session_match: Optional[re.Match[str]] = re.search(r'/(?:play|anime)/([a-zA-Z0-9\-]+)', play_url)
+            if session_match:
+                anime_session = session_match.group(1)
 
             episodes: Dict[int, str] = {}
-            show_title = ""
+            show_title: str = ""
 
             # Fetch via release API if anime_session exists
             if anime_session:
                 logger.debug(f"Fetching complete episode list via release API for session: {anime_session}")
-                current_p = 1
-                while current_p <= 15:
-                    api_data = None
+                current_page: int = 1
+                while current_page <= 15:
+                    api_data: Optional[Dict[str, Any]] = None
                     for attempt in range(2):
                         try:
                             api_data = await asyncio.wait_for(
@@ -867,7 +891,7 @@ class AnimepaheScraper:
                                     const controller = new AbortController();
                                     const timeoutId = setTimeout(() => controller.abort(), 6000);
                                     try {{
-                                        const res = await fetch('/api?m=release&id={anime_session}&sort=episode_asc&page={current_p}', {{
+                                        const res = await fetch('/api?m=release&id={anime_session}&sort=episode_asc&page={current_page}', {{
                                             signal: controller.signal,
                                             headers: {{ 'Accept': 'application/json' }}
                                         }});
@@ -888,34 +912,35 @@ class AnimepaheScraper:
                     if not api_data or not api_data.get("data"):
                         break
 
-                    for ep_item in api_data.get("data", []):
-                        ep_val = ep_item.get("episode", 0)
-                        session_val = ep_item.get("session", "")
-                        if str(ep_val).isdigit() and session_val:
-                            ep_num = int(ep_val)
-                            ep_play_url = urljoin(self.active_base_url, f"/play/{anime_session}/{session_val}")
-                            episodes[ep_num] = ep_play_url
+                    episode_item: Dict[str, Any]
+                    for episode_item in api_data.get("data", []):
+                        episode_value: Any = episode_item.get("episode", 0)
+                        session_value: str = str(episode_item.get("session", ""))
+                        if str(episode_value).isdigit() and session_value:
+                            episode_number: int = int(episode_value)
+                            episode_play_url: str = urljoin(self.active_base_url, f"/play/{anime_session}/{session_value}")
+                            episodes[episode_number] = episode_play_url
 
-                    last_p = api_data.get("last_page", 1)
-                    if current_p >= last_p:
+                    last_page: int = int(api_data.get("last_page", 1))
+                    if current_page >= last_page:
                         break
-                    current_p += 1
+                    current_page += 1
 
                 if episodes:
                     logger.info(f"Retrieved {len(episodes)} total episodes for session '{anime_session}' via API.")
                     return show_title or anime_session, episodes
 
             # If API yielded 0 episodes or session extraction was absent, fallback to page navigation & DOM
-            fallback_nav_url = play_url
+            fallback_navigation_url: str = play_url
             if anime_session and play_url.rstrip('/').endswith(f"/play/{anime_session}"):
-                fallback_nav_url = f"{self.active_base_url}/anime/{anime_session}"
+                fallback_navigation_url = f"{self.active_base_url}/anime/{anime_session}"
 
-            page, _ = await self._safe_goto(fallback_nav_url, wait_until="commit", timeout=25000)
+            page, _ = await self._safe_goto(fallback_navigation_url, wait_until="commit", timeout=25000)
             await self._handle_cloudflare_if_present(page, max_wait=20)
             await self.jitter(0.5, 1.5)
 
             # Extract show title from DOM
-            show_info = await page.evaluate('''() => {
+            show_info: Dict[str, str] = await page.evaluate('''() => {
                 const infoContainer = document.querySelector('.theatre-info');
                 let showTitle = '';
                 let showHref = '';
@@ -938,9 +963,9 @@ class AnimepaheScraper:
             }''')
 
             show_title = show_info.get("title", "")
-            show_href = show_info.get("href", "")
+            show_href: str = show_info.get("href", "")
 
-            episodes_dom = await page.evaluate('''() => {
+            episodes_dom: Dict[str, str] = await page.evaluate('''() => {
                 const epMap = {};
                 const epElements = document.querySelectorAll('.episode-list .episode, .episode-wrap, .episode, a[href*="/play/"]');
                 epElements.forEach(el => {
@@ -961,12 +986,12 @@ class AnimepaheScraper:
                 return epMap;
             }''')
 
-            episodes = {int(k): urljoin(self.active_base_url, v) for k, v in episodes_dom.items()}
+            episodes = {int(key): urljoin(self.active_base_url, val) for key, val in episodes_dom.items()}
             logger.info(f"Retrieved {len(episodes)} total episodes for '{show_title}' via DOM.")
             return show_title, episodes
 
-        except Exception as e:
-            logger.error(f"Error fetching show episodes from {play_url}: {e}")
+        except Exception as error:
+            logger.error(f"Error fetching show episodes from {play_url}: {error}")
             try:
                 await self._reset_page()
             except Exception:
