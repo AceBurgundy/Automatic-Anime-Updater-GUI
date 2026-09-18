@@ -115,8 +115,7 @@ class DatabaseManager:
                 logger.info("Migration: dropped deprecated site_url column from anime_series")
 
 
-    # SETTINGS OPERATIONS
-    # =========================================================================
+    # Settings operations
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Gets a configuration setting value."""
         with self._get_connection() as conn:
@@ -144,9 +143,7 @@ class DatabaseManager:
         """Sets a boolean setting value."""
         self.set_setting(key, "1" if value else "0")
 
-    # =========================================================================
-    # IGNORED ITEMS OPERATIONS
-    # =========================================================================
+    # Ignored items operations
     def get_ignored_items(self) -> List[str]:
         """Returns all currently ignored patterns / names."""
         with self._get_connection() as conn:
@@ -194,9 +191,7 @@ class DatabaseManager:
             conn.execute("DELETE FROM ignored_items")
             conn.commit()
 
-    # =========================================================================
-    # ANIME SERIES & MAPPING OPERATIONS
-    # =========================================================================
+    # Anime series & mapping operations
     def get_series_by_folder_path(self, folder_path: Path) -> Optional[Dict[str, Any]]:
         """Retrieves cached series record by absolute folder path."""
         norm_path = str(Path(folder_path).resolve()).replace("\\", "/")
@@ -243,9 +238,7 @@ class DatabaseManager:
             conn.commit()
             return series_id
 
-    # =========================================================================
-    # DOWNLOADED EPISODES OPERATIONS
-    # =========================================================================
+    # Downloaded episodes operations
     def record_downloaded_episode(
         self,
         series_id: int,
@@ -283,9 +276,7 @@ class DatabaseManager:
             ).fetchone()
             return bool(row)
 
-    # =========================================================================
-    # HISTORY & LOGGING OPERATIONS
-    # =========================================================================
+    # History & logging operations
     def record_run_history(self, downloaded_count: int, error_count: int, notes: str = "") -> None:
         """Records a pipeline run summary into the history table."""
         with self._get_connection() as conn:
@@ -301,9 +292,8 @@ class DatabaseManager:
             """)
             conn.commit()
 
-    # =========================================================================
-    # LEGACY JSON MIGRATION
-    # =========================================================================
+    # Legacy JSON migration
+
     def migrate_legacy_files_if_needed(self, state_file: Optional[Path] = None, ignored_file: Optional[Path] = None) -> None:
         """Imports data from legacy state.json and ignored.json / exceptions.json if present (runs once)."""
         if self.get_setting("legacy_files_migrated") == "1":
