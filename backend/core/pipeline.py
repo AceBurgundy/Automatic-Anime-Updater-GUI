@@ -1,11 +1,15 @@
-import asyncio
-import json
-import logging
-import sys
-import time
+from asyncio import (
+    TimeoutError as AsyncTimeoutError,
+    run as asyncio_run,
+    sleep as asyncio_sleep,
+    wait_for as asyncio_wait_for,
+)
 from datetime import datetime, timezone
+from json import dumps as json_dumps
+from logging import Logger, getLogger
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Set
+from sys import stdout
+from typing import Any, Dict, List, Optional, Set
 
 from config import (
     TARGET_DIR,
@@ -30,7 +34,7 @@ from core.scanner import LocalScanner, AnimeFolder
 from core.scraper import AnimepaheScraper
 from core.state_manager import StateManager
 
-logger = logging.getLogger("anime_refresher.pipeline")
+logger: Logger = getLogger("anime_refresher.pipeline")
 
 def emit_stream_event(
     anime_name: str,
@@ -42,10 +46,35 @@ def emit_stream_event(
     total_bytes: int = 0,
     speed_mbps: float = 0.0,
     short_error_message: str = "",
-    error_log_message: str = ""
+    error_log_message: str = "",
 ) -> None:
-    """Emits a single-line type-prepended JSON event object directly to stdout with auto-flush."""
-    payload = {
+    """
+    Emit a single-line type-prepended JSON event object directly to stdout with auto-flush.
+
+    Parameters
+    ----------
+    anime_name : str
+        Name of the anime series.
+    episode_num : int
+        Episode sequence number.
+    filename : str
+        Target filename of the episode.
+    status : str
+        Current download or processing status.
+    progress_percentage : float, default=0.0
+        Completion percentage (0.0 to 100.0).
+    downloaded_bytes : int, default=0
+        Number of bytes transferred.
+    total_bytes : int, default=0
+        Total content length in bytes.
+    speed_mbps : float, default=0.0
+        Instantaneous transfer speed in MB/s.
+    short_error_message : str, default=""
+        Summary error string for UI presentation.
+    error_log_message : str, default=""
+        Detailed diagnostic error log message.
+    """
+    payload: Dict[str, Any] = {
         "string_event": "download_update",
         "string_timestamp": datetime.now(timezone.utc).isoformat(),
         "string_anime_name": str(anime_name),
@@ -59,8 +88,9 @@ def emit_stream_event(
         "string_short_error_message": str(short_error_message),
         "string_error_log_message": str(error_log_message),
     }
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    stdout.write(json_dumps(payload, ensure_ascii=False) + "\n")
+    stdout.flush()
+
 
 def _render_series_box(
     index: int,
@@ -70,23 +100,45 @@ def _render_series_box(
     local_count: int,
     available_count: int,
     missing_count: int,
-    status_note: str = ""
+    status_note: str = "",
 ) -> None:
-    """Prints a clean, beautiful CLI summary card for an individual anime series."""
-    width = 76
-    header = f" [{index:02d}/{total:02d}] {folder_name} "
-    border_top = f"┌─{header}{'─' * max(0, width - len(header) - 3)}┐"
-    border_bot = f"└{'─' * (width - 2)}┘"
+    """
+    Print a clean, beautiful CLI summary card for an individual anime series.
+
+    Parameters
+    ----------
+    index : int
+        Current 1-based index in the iteration queue.
+    total : int
+        Total number of local series folders in scope.
+    folder_name : str
+        Local directory name of the anime.
+    site_title : str
+        Resolved Animepahe catalog title.
+    local_count : int
+        Count of local video files found.
+    available_count : int
+        Count of episodes available on the mirror.
+    missing_count : int
+        Count of episodes missing locally.
+    status_note : str, default=""
+        Contextual operational status note.
+    """
+    width: int = 76
+    header: str = f" [{index:02d}/{total:02d}] {folder_name} "
+    border_top: str = f"┌─{header}{'─' * max(0, width - len(header) - 3)}┐"
+    border_bot: str = f"└{'─' * (width - 2)}┘"
 
     print(f"\n{border_top}")
     if site_title and site_title != folder_name:
-        print(f"│ Site Match: \"{site_title[:width - 17]}\"")
-    
-    ep_info = f"Local: {local_count} | Available: {available_count} | Missing: {missing_count}"
+        print(f'│ Site Match: "{site_title[:width - 17]}"')
+
+    ep_info: str = f"Local: {local_count} | Available: {available_count} | Missing: {missing_count}"
     print(f"│ Episodes:   {ep_info}")
     if status_note:
         print(f"│ Status:     {status_note}")
     print(border_bot)
+
 
 async def _async_pipeline(
     start_automation: bool,
@@ -98,10 +150,40 @@ async def _async_pipeline(
     headful_browser: bool,
     verbose: bool,
     ignored: Optional[List[str]] = None,
-    folder_limit: Optional[int] = None
+    folder_limit: Optional[int] = None,
 ) -> int:
-    """Core asynchronous per-series automation pipeline implementation."""
-    headless_mode = False if headful_browser else HEADLESS
+    """
+    Core asynchronous per-series automation pipeline implementation.
+
+    Parameters
+    ----------
+    start_automation : bool
+        Whether to start the automation scan and download process.
+    stream_events : bool
+        Whether to emit line-delimited JSON status events to stdout.
+    dry_run : bool
+        If True, queries and plans actions without downloading files.
+    single_cycle : bool
+        If True, executes exactly one pass without ongoing polling.
+    maximum_downloads : Optional[int]
+        Upper limit on episode downloads for this cycle.
+    preferred_resolution : str
+        Target resolution ('1080', '720', '480', '360').
+    headful_browser : bool
+        If True, launches visible browser GUI.
+    verbose : bool
+        Whether to enable verbose diagnostic output.
+    ignored : Optional[List[str]], default=None
+        Custom list of folder names or patterns to ignore.
+    folder_limit : Optional[int], default=None
+        Maximum count of folders to process in this run.
+
+    Returns
+    -------
+    int
+        Process exit code (0 for success, non-zero for failure).
+    """
+    headless_mode: bool = False if headful_browser else HEADLESS
 
     # Step 1: Arm SafetyGuard
     if not stream_events:
@@ -186,8 +268,8 @@ async def _async_pipeline(
                     logger.info(f"[{idx}/{len(local_folders)}] Resolving series mapping for: '{folder_name}'...")
                 
                 try:
-                    candidates = await asyncio.wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
-                except asyncio.TimeoutError:
+                    candidates = await asyncio_wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
+                except AsyncTimeoutError:
                     candidates = []
                     logger.warning(f"Search timed out (25s) for '{folder_name}'")
 
@@ -253,7 +335,7 @@ async def _async_pipeline(
             catalog_episodes: Dict[int, str] = {}
             fetch_error = False
             try:
-                _, catalog_episodes = await asyncio.wait_for(scraper.get_show_episodes(play_url_target), timeout=45.0)
+                _, catalog_episodes = await asyncio_wait_for(scraper.get_show_episodes(play_url_target), timeout=45.0)
             except Exception as e:
                 fetch_error = True
                 logger.warning(f"Could not retrieve catalog for '{folder_name}': {e}")
@@ -280,14 +362,14 @@ async def _async_pipeline(
 
                     await scraper._reset_browser_context()
                     await scraper.rotate_mirror()
-                    await asyncio.sleep(cooldown_sec)
+                    await asyncio_sleep(cooldown_sec)
                     consecutive_catalog_failures = 0
 
                     # Retry catalog retrieval for this series on the newly rotated mirror
                     play_url_target = f"{scraper.active_base_url}/play/{site_session}"
                     try:
                         logger.info(f"Retrying catalog retrieval for '{folder_name}' on rotated mirror: {scraper.active_base_url}")
-                        _, catalog_episodes = await asyncio.wait_for(scraper.get_show_episodes(play_url_target), timeout=45.0)
+                        _, catalog_episodes = await asyncio_wait_for(scraper.get_show_episodes(play_url_target), timeout=45.0)
                         fetch_error = False
                     except Exception as retry_err:
                         logger.warning(f"Retry on rotated mirror failed for '{folder_name}': {retry_err}")
@@ -300,8 +382,8 @@ async def _async_pipeline(
                 )
                 recovery_candidates: List[Dict[str, Any]]
                 try:
-                    recovery_candidates = await asyncio.wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
-                except asyncio.TimeoutError:
+                    recovery_candidates = await asyncio_wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
+                except AsyncTimeoutError:
                     recovery_candidates = []
 
                 if recovery_candidates:
@@ -320,7 +402,7 @@ async def _async_pipeline(
                         probe_url: str = f"{scraper.active_base_url}/play/{candidate_session}"
                         probe_episodes: Dict[int, str] = {}
                         try:
-                            _, probe_episodes = await asyncio.wait_for(
+                            _, probe_episodes = await asyncio_wait_for(
                                 scraper.get_show_episodes(probe_url), timeout=45.0
                             )
                         except Exception as probe_error:
@@ -428,7 +510,7 @@ async def _async_pipeline(
                     max_dl_attempts = 3
                     for dl_attempt in range(1, max_dl_attempts + 1):
                         try:
-                            dl_success = await asyncio.wait_for(
+                            dl_success = await asyncio_wait_for(
                                 scraper.download_episode_to_temp(
                                     anime_title=folder_name,
                                     episode_num=ep_num,
@@ -438,7 +520,7 @@ async def _async_pipeline(
                                 ),
                                 timeout=300.0
                             )
-                        except asyncio.TimeoutError:
+                        except AsyncTimeoutError:
                             dl_error = "Download timed out (300s)"
                             dl_success = False
                         except Exception as err:
@@ -457,7 +539,7 @@ async def _async_pipeline(
                             if not stream_events:
                                 print(f"   [!] Attempt {dl_attempt} failed ({dl_error or 'Stream resolution failed'}). Retrying in {retry_delay}s...")
                             await scraper._reset_page()
-                            await asyncio.sleep(retry_delay)
+                            await asyncio_sleep(retry_delay)
 
                     if dl_success and temp_path.exists():
                         consecutive_dl_failures = 0
@@ -515,12 +597,12 @@ async def _async_pipeline(
                                 print(f"   [!] Rate limit / challenge cooldown: resetting session, switching mirror (waiting {cooldown_sec}s)...")
                             await scraper._reset_browser_context()
                             await scraper.rotate_mirror()
-                            await asyncio.sleep(cooldown_sec)
+                            await asyncio_sleep(cooldown_sec)
                             consecutive_dl_failures = 0
 
                     # Inter-download throttle
                     if REQUEST_DELAY_SECONDS > 0:
-                        await asyncio.sleep(REQUEST_DELAY_SECONDS)
+                        await asyncio_sleep(REQUEST_DELAY_SECONDS)
 
             await scraper.jitter(0.5, 1.0)
 
@@ -557,11 +639,41 @@ def run_pipeline(
     headful_browser: bool = False,
     verbose: bool = False,
     ignored: Optional[List[str]] = None,
-    folder_limit: Optional[int] = None
+    folder_limit: Optional[int] = None,
 ) -> int:
-    """Synchronous entry point that sets up logging and runs the async pipeline."""
+    """
+    Synchronous entry point that sets up logging and runs the async pipeline.
+
+    Parameters
+    ----------
+    start_automation : bool, default=True
+        Whether to start the automation scan and download process.
+    stream_events : bool, default=False
+        Whether to emit line-delimited JSON status events to stdout.
+    dry_run : bool, default=False
+        If True, queries and plans actions without downloading files.
+    single_cycle : bool, default=False
+        If True, executes exactly one pass without ongoing polling.
+    maximum_downloads : Optional[int], default=None
+        Upper limit on episode downloads for this cycle.
+    preferred_resolution : str, default=PREFERRED_RESOLUTION
+        Target resolution ('1080', '720', '480', '360').
+    headful_browser : bool, default=False
+        If True, launches visible browser GUI.
+    verbose : bool, default=False
+        Whether to enable verbose diagnostic output.
+    ignored : Optional[List[str]], default=None
+        Custom list of folder names or patterns to ignore.
+    folder_limit : Optional[int], default=None
+        Maximum count of folders to process in this run.
+
+    Returns
+    -------
+    int
+        Pipeline execution exit code (0 for success, non-zero for error).
+    """
     setup_logging(verbose=verbose, stream_events=stream_events)
-    return asyncio.run(
+    return asyncio_run(
         _async_pipeline(
             start_automation=start_automation,
             stream_events=stream_events,
@@ -572,6 +684,6 @@ def run_pipeline(
             headful_browser=headful_browser,
             verbose=verbose,
             ignored=ignored,
-            folder_limit=folder_limit
+            folder_limit=folder_limit,
         )
     )

@@ -1,16 +1,14 @@
-import asyncio
-import io
-import json
-import logging
-import random
-import re
-import time
-import urllib.parse
+from asyncio import sleep as asyncio_sleep, wait_for as asyncio_wait_for
 from dataclasses import dataclass
+from logging import Logger, getLogger
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Any, Callable
-from urllib.parse import urljoin
-import httpx
+from random import randint, random as random_float, uniform
+from re import IGNORECASE, Match, search as re_search, sub as re_sub
+from time import time as current_timestamp
+from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import quote as url_quote, urljoin
+
+from httpx import AsyncClient as HttpAsyncClient
 
 
 from thefuzz import fuzz
@@ -46,7 +44,7 @@ from core.ai_helper import AIHelper
 from core.state_manager import StateManager
 
 
-logger = logging.getLogger("anime_refresher.scraper")
+logger: Logger = getLogger("anime_refresher.scraper")
 
 @dataclass
 class AnimepaheItem:
@@ -56,15 +54,49 @@ class AnimepaheItem:
     anime_session: str = ""
 
 class AnimepaheScraper:
+    state_manager: StateManager
+    base_urls: List[str]
+    headless: bool
+    browser_type: str
+    audio_preference: str
+    preferred_resolution: Optional[str]
+    active_base_url: str
+    ai_helper: AIHelper
+    profile_dir: Path
+    debug_dir: Path
+    camoufox_cm: Any
+    playwright: Any
+    browser: Optional[Browser]
+    context: Optional[BrowserContext]
+    page: Optional[Page]
+
     def __init__(
         self,
         state_manager: StateManager,
-        base_urls: List[str] = None,
+        base_urls: Optional[List[str]] = None,
         headless: bool = HEADLESS,
         browser_type: str = BROWSER_TYPE,
         audio_preference: str = AUDIO_PREFERENCE,
-        preferred_resolution: Optional[str] = None
-    ):
+        preferred_resolution: Optional[str] = None,
+    ) -> None:
+        """
+        Initialize the Animepahe web scraper.
+
+        Parameters
+        ----------
+        state_manager : StateManager
+            State manager instance for persisting retry counts.
+        base_urls : Optional[List[str]], default=None
+            List of Animepahe mirror URLs.
+        headless : bool, default=HEADLESS
+            Whether to run the browser in headless mode.
+        browser_type : str, default=BROWSER_TYPE
+            Browser engine name ('camoufox', 'firefox', or 'chrome').
+        audio_preference : str, default=AUDIO_PREFERENCE
+            Audio language preference ('sub', 'dub', 'sub_strict', 'dub_strict').
+        preferred_resolution : Optional[str], default=None
+            Explicit preferred resolution ('1080', '720', '480', '360').
+        """
         self.state_manager = state_manager
         self.base_urls = base_urls or BASE_URLS
         self.headless = headless
@@ -84,14 +116,42 @@ class AnimepaheScraper:
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AnimepaheScraper":
+        """
+        Asynchronously enter the scraper context, starting the browser engine.
+
+        Returns
+        -------
+        AnimepaheScraper
+            The running scraper instance.
+        """
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[type],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[Any],
+    ) -> None:
+        """
+        Asynchronously exit the scraper context, terminating the browser engine.
+
+        Parameters
+        ----------
+        exc_type : Optional[type]
+            Exception type if raised.
+        exc_val : Optional[BaseException]
+            Exception value if raised.
+        exc_tb : Optional[Any]
+            Traceback if raised.
+        """
         await self.close()
 
-    async def start(self):
+    async def start(self) -> None:
+        """
+        Launch the browser engine and initialize default context and page.
+        """
         logger.debug(f"Initializing scraper browser (Engine: {self.browser_type}, Headless: {self.headless})...")
         
         if self.browser_type in ("firefox", "camoufox") and CAMOUFOX_AVAILABLE:
@@ -162,7 +222,10 @@ class AnimepaheScraper:
 
         logger.info(f"Browser started successfully (Engine: {self.browser_type.capitalize()}, Headless: {self.headless})")
 
-    async def close(self):
+    async def close(self) -> None:
+        """
+        Close all active pages, contexts, browser processes, and Playwright instances.
+        """
         logger.debug("Closing browser session...")
         if hasattr(self, "page") and self.page:
             try:
@@ -191,6 +254,19 @@ class AnimepaheScraper:
                 pass
 
     async def _create_page(self) -> Page:
+        """
+        Create or return an active, non-closed browser page.
+
+        Returns
+        -------
+        Page
+            Active Playwright Page instance.
+
+        Raises
+        ------
+        RuntimeError
+            If the browser context is not initialized.
+        """
         if hasattr(self, "page") and self.page and not self.page.is_closed():
             return self.page
         if self.browser:
@@ -261,8 +337,8 @@ class AnimepaheScraper:
 
     async def jitter(self, min_sec: float = 1.0, max_sec: float = 2.5):
         """Variable delay with realistic jitter."""
-        delay = random.uniform(min_sec, max_sec)
-        await asyncio.sleep(delay)
+        delay = uniform(min_sec, max_sec)
+        await asyncio_sleep(delay)
 
     async def _human_mouse_move(self, page: Page, target_x: float, target_y: float, steps: int = 15):
         """Simulates smooth mouse movement."""
@@ -271,15 +347,15 @@ class AnimepaheScraper:
                 await page.mouse.move(target_x, target_y)
             else:
                 vp = page.viewport_size or {"width": 1920, "height": 1080}
-                cur_x = random.uniform(vp["width"] * 0.3, vp["width"] * 0.7)
-                cur_y = random.uniform(vp["height"] * 0.3, vp["height"] * 0.7)
+                cur_x = uniform(vp["width"] * 0.3, vp["width"] * 0.7)
+                cur_y = uniform(vp["height"] * 0.3, vp["height"] * 0.7)
                 for i in range(1, steps + 1):
                     t = i / steps
                     factor = t * t * (3 - 2 * t)
-                    x = cur_x + (target_x - cur_x) * factor + random.uniform(-2, 2)
-                    y = cur_y + (target_y - cur_y) * factor + random.uniform(-2, 2)
+                    x = cur_x + (target_x - cur_x) * factor + uniform(-2, 2)
+                    y = cur_y + (target_y - cur_y) * factor + uniform(-2, 2)
                     await page.mouse.move(x, y)
-                    await asyncio.sleep(random.uniform(0.015, 0.035))
+                    await asyncio_sleep(uniform(0.015, 0.035))
                 await page.mouse.move(target_x, target_y)
         except Exception:
             pass
@@ -287,12 +363,12 @@ class AnimepaheScraper:
     async def _human_scroll(self, page: Page):
         """Simulates realistic browsing scroll behavior."""
         try:
-            delta = random.randint(180, 420)
+            delta = randint(180, 420)
             await page.mouse.wheel(0, delta)
-            await asyncio.sleep(random.uniform(0.2, 0.5))
-            if random.random() < 0.35:
-                await page.mouse.wheel(0, -random.randint(60, 150))
-                await asyncio.sleep(random.uniform(0.1, 0.3))
+            await asyncio_sleep(uniform(0.2, 0.5))
+            if random_float() < 0.35:
+                await page.mouse.wheel(0, -randint(60, 150))
+                await asyncio_sleep(uniform(0.1, 0.3))
         except Exception:
             pass
 
@@ -379,7 +455,7 @@ class AnimepaheScraper:
             except Exception:
                 pass
 
-            await asyncio.sleep(2.0)
+            await asyncio_sleep(2.0)
 
         try:
             title = await page.title()
@@ -526,11 +602,11 @@ class AnimepaheScraper:
                     play_href = it.get("play_href", "").strip()
                     ep_text = it.get("episode_text", "").strip()
 
-                    ep_match = re.search(r'(\d+)', ep_text) or re.search(r'Episode\s*(\d+)', raw_title, re.IGNORECASE)
+                    ep_match = re_search(r'(\d+)', ep_text) or re_search(r'Episode\s*(\d+)', raw_title, IGNORECASE)
                     ep_num = int(ep_match.group(1)) if ep_match else 0
 
                     full_play_url = urljoin(self.active_base_url, play_href)
-                    anime_session_match = re.search(r'/play/([a-zA-Z0-9\-]+)/', play_href)
+                    anime_session_match = re_search(r'/play/([a-zA-Z0-9\-]+)/', play_href)
                     anime_session = anime_session_match.group(1) if anime_session_match else ""
 
                     releases.append({
@@ -550,12 +626,12 @@ class AnimepaheScraper:
 
     def match_local_anime(self, web_title: str, local_folder_names: List[str], threshold: int = 85) -> Optional[str]:
         """Fuzzy matching local folder names against web titles."""
-        clean_web = re.sub(r'[^\w\s]', ' ', web_title).lower()
+        clean_web = re_sub(r'[^\w\s]', ' ', web_title).lower()
         best_match = None
         best_score = 0
 
         for local_folder in local_folder_names:
-            clean_local = re.sub(r'[^\w\s]', ' ', local_folder).lower()
+            clean_local = re_sub(r'[^\w\s]', ' ', local_folder).lower()
             score = fuzz.token_set_ratio(clean_web, clean_local)
             if score > best_score and score >= threshold:
                 best_score = score
@@ -606,7 +682,7 @@ class AnimepaheScraper:
             if not on_mirror:
                 logger.warning(f"Active mirror {self.active_base_url} is not accessible for search API")
                 return []
-            eval_result = await asyncio.wait_for(
+            eval_result = await asyncio_wait_for(
                 page.evaluate('''async (queryTitle) => {
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -661,7 +737,7 @@ class AnimepaheScraper:
               }
             }
             '''
-            async with httpx.AsyncClient(timeout=3.5, follow_redirects=True) as client:
+            async with HttpAsyncClient(timeout=3.5, follow_redirects=True) as client:
                 res = await client.post('https://graphql.anilist.co', json={'query': query, 'variables': {'search': english_title}})
                 if res.status_code == 200:
                     media = res.json().get('data', {}).get('Media')
@@ -679,9 +755,9 @@ class AnimepaheScraper:
 
         # 2. Jikan / MAL API
         try:
-            clean = re.sub(r'\s+(?:season\s+\d+|s\d+|ii|iii|iv|v|act\.\d+)\b', '', english_title, flags=re.IGNORECASE)
-            url = f"https://api.jikan.moe/v4/anime?q={urllib.parse.quote(clean)}&limit=1"
-            async with httpx.AsyncClient(timeout=3.5, follow_redirects=True) as client:
+            clean = re_sub(r'\s+(?:season\s+\d+|s\d+|ii|iii|iv|v|act\.\d+)\b', '', english_title, flags=IGNORECASE)
+            url = f"https://api.jikan.moe/v4/anime?q={url_quote(clean)}&limit=1"
+            async with HttpAsyncClient(timeout=3.5, follow_redirects=True) as client:
                 res = await client.get(url)
                 if res.status_code == 200:
                     data = res.json().get("data", [])
@@ -762,11 +838,11 @@ class AnimepaheScraper:
 
         subbed_options: List[Dict[str, str]] = [
             option for option in options
-            if not re.search(r'\b(eng|dub|english)\b', option["text"], re.IGNORECASE)
+            if not re_search(r'\b(eng|dub|english)\b', option["text"], IGNORECASE)
         ]
         dubbed_options: List[Dict[str, str]] = [
             option for option in options
-            if re.search(r'\b(eng|dub|english)\b', option["text"], re.IGNORECASE)
+            if re_search(r'\b(eng|dub|english)\b', option["text"], IGNORECASE)
         ]
 
         # Strict modes
@@ -871,7 +947,7 @@ class AnimepaheScraper:
 
             # Extract anime session directly from play_url
             anime_session: str = ""
-            session_match: Optional[re.Match[str]] = re.search(r'/(?:play|anime)/([a-zA-Z0-9\-]+)', play_url)
+            session_match: Optional[Match[str]] = re_search(r'/(?:play|anime)/([a-zA-Z0-9\-]+)', play_url)
             if session_match:
                 anime_session = session_match.group(1)
 
@@ -886,7 +962,7 @@ class AnimepaheScraper:
                     api_data: Optional[Dict[str, Any]] = None
                     for attempt in range(2):
                         try:
-                            api_data = await asyncio.wait_for(
+                            api_data = await asyncio_wait_for(
                                 page.evaluate(f'''async () => {{
                                     const controller = new AbortController();
                                     const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -907,7 +983,7 @@ class AnimepaheScraper:
                             if api_data:
                                 break
                         except Exception:
-                            await asyncio.sleep(0.5)
+                            await asyncio_sleep(0.5)
 
                     if not api_data or not api_data.get("data"):
                         break
@@ -1045,7 +1121,7 @@ class AnimepaheScraper:
             # Poll for #pickDownload options with JS click fallback
             options = []
             for poll_idx in range(8):
-                await asyncio.sleep(0.75)
+                await asyncio_sleep(0.75)
                 options = await page.evaluate(r'''() => {
                     const containers = document.querySelectorAll('#pickDownload, .dropdown-menu');
                     const res = [];
@@ -1099,7 +1175,7 @@ class AnimepaheScraper:
             # Extract kwik link
             current_page_url = page.url or ""
             html_content = await page.content()
-            m = re.search(r'https?://(?:kwik\.[a-z]+|pahe\.win)/f/([a-zA-Z0-9]+)', html_content)
+            m = re_search(r'https?://(?:kwik\.[a-z]+|pahe\.win)/f/([a-zA-Z0-9]+)', html_content)
             kwik_url = m.group(0) if m else current_page_url
 
             # Only perform explicit navigation if we are not already on the destination Kwik page
@@ -1139,7 +1215,7 @@ class AnimepaheScraper:
                 logger.error("Download submit button not found on Kwik page")
                 return False
 
-            start_dl_time = time.time()
+            start_dl_time = current_timestamp()
             async with page.expect_download(timeout=90000) as download_info:
                 try:
                     await dl_submit.click()
@@ -1152,7 +1228,7 @@ class AnimepaheScraper:
             # Save download to temp target file
             await download.save_as(str(temp_target_file))
 
-            elapsed = time.time() - start_dl_time
+            elapsed = current_timestamp() - start_dl_time
             if temp_target_file.exists() and temp_target_file.stat().st_size > 1024 * 1024:
                 file_size = temp_target_file.stat().st_size
                 file_mb = file_size / (1024 * 1024)
