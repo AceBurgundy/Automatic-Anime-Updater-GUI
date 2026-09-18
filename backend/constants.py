@@ -2,10 +2,8 @@
 
 from pathlib import Path
 
-# =====================================================================
 # AI MODEL CONFIGURATION
 # To change or upgrade the AI model in the future, update these values:
-# =====================================================================
 DEFAULT_MODEL_REPO = "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
 DEFAULT_MODEL_FILENAME = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
 DEFAULT_MODEL_URL = (
@@ -13,9 +11,8 @@ DEFAULT_MODEL_URL = (
 )
 MODEL_MIN_SIZE_BYTES = 300 * 1024 * 1024  # 300 MB minimum verification threshold
 
-# =====================================================================
 # SYSTEM & PIPELINE DEFAULTS
-# =====================================================================
+
 DEFAULT_TARGET_FOLDER_NAME = "Anime Unwatched"
 DEFAULT_AUDIO_PREFERENCE = "sub"  # Options: "sub", "dub", "sub_strict", "dub_strict"
 VALID_AUDIO_PREFERENCES = ("sub", "dub", "sub_strict", "dub_strict")
