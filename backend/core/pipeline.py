@@ -298,32 +298,35 @@ async def _async_pipeline(
                     f"catalog returned 0 releases for session '{site_session}'. "
                     f"Probing Animepahe for updated session..."
                 )
+                recovery_candidates: List[Dict[str, Any]]
                 try:
-                    re_candidates = await asyncio.wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
+                    recovery_candidates = await asyncio.wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
                 except asyncio.TimeoutError:
-                    re_candidates = []
+                    recovery_candidates = []
 
-                if re_candidates:
-                    re_best, re_score, _, _ = ai_helper.rank_and_score_candidates(
+                if recovery_candidates:
+                    recovery_best_candidate: Optional[Dict[str, Any]]
+                    recovery_best_score: float
+                    recovery_best_candidate, recovery_best_score, _, _ = ai_helper.rank_and_score_candidates(
                         folder_title=folder_name,
-                        candidates=re_candidates,
+                        candidates=recovery_candidates,
                         threshold=0.75
                     )
-                    if re_best and re_best.get("session"):
-                        candidate_session = re_best.get("session", "").strip()
-                        candidate_title = re_best.get("title", "").strip() or site_title
+                    if recovery_best_candidate and recovery_best_candidate.get("session"):
+                        candidate_session: str = str(recovery_best_candidate.get("session", "")).strip()
+                        candidate_title: str = str(recovery_best_candidate.get("title", "")).strip() or site_title
                         # Always re-probe with the best candidate — even if the session is the same,
                         # a live attempt may succeed (transient 404 / stale session recovery).
-                        probe_url = f"{scraper.active_base_url}/play/{candidate_session}"
+                        probe_url: str = f"{scraper.active_base_url}/play/{candidate_session}"
                         probe_episodes: Dict[int, str] = {}
                         try:
                             _, probe_episodes = await asyncio.wait_for(
                                 scraper.get_show_episodes(probe_url), timeout=45.0
                             )
-                        except Exception as probe_err:
+                        except Exception as probe_error:
                             logger.warning(
                                 f"Re-probe failed for '{folder_name}' with session "
-                                f"'{candidate_session}': {probe_err}"
+                                f"'{candidate_session}': {probe_error}"
                             )
 
                         if probe_episodes:
