@@ -292,6 +292,61 @@ async def _async_pipeline(
                     except Exception as retry_err:
                         logger.warning(f"Retry on rotated mirror failed for '{folder_name}': {retry_err}")
 
+            if not fetch_error and not catalog_episodes and len(existing_eps) > 0:
+                logger.info(
+                    f"Series '{folder_name}' has {len(existing_eps)} local episode(s) but "
+                    f"catalog returned 0 releases for session '{site_session}'. "
+                    f"Probing Animepahe for updated session..."
+                )
+                try:
+                    re_candidates = await asyncio.wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
+                except asyncio.TimeoutError:
+                    re_candidates = []
+
+                if re_candidates:
+                    re_best, re_score, _, _ = ai_helper.rank_and_score_candidates(
+                        folder_title=folder_name,
+                        candidates=re_candidates,
+                        threshold=0.75
+                    )
+                    if re_best and re_best.get("session"):
+                        candidate_session = re_best.get("session", "").strip()
+                        candidate_title = re_best.get("title", "").strip() or site_title
+                        # Always re-probe with the best candidate — even if the session is the same,
+                        # a live attempt may succeed (transient 404 / stale session recovery).
+                        probe_url = f"{scraper.active_base_url}/play/{candidate_session}"
+                        probe_episodes: Dict[int, str] = {}
+                        try:
+                            _, probe_episodes = await asyncio.wait_for(
+                                scraper.get_show_episodes(probe_url), timeout=45.0
+                            )
+                        except Exception as probe_err:
+                            logger.warning(
+                                f"Re-probe failed for '{folder_name}' with session "
+                                f"'{candidate_session}': {probe_err}"
+                            )
+
+                        if probe_episodes:
+                            logger.info(
+                                f"Recovered session for '{folder_name}': "
+                                f"'{site_session}' -> '{candidate_session}' — "
+                                f"{len(probe_episodes)} episode(s) now available."
+                            )
+                            site_session = candidate_session
+                            site_title = candidate_title
+                            catalog_episodes = probe_episodes
+                            db_manager.upsert_series(
+                                folder_path=folder_path,
+                                folder_name=folder_name,
+                                site_title=site_title,
+                                site_session=site_session
+                            )
+                        else:
+                            logger.warning(
+                                f"Session re-probe returned 0 episodes for '{folder_name}' "
+                                f"(candidate session: '{candidate_session}'). Skipping this run."
+                            )
+
             if fetch_error:
                 missing_eps = []
                 status_note = "[!] Catalog Fetch Failed (Logged to errors.html)"
