@@ -53,7 +53,8 @@ class DatabaseManager:
                     folder_name TEXT NOT NULL,
                     site_title TEXT,
                     site_session TEXT,
-                    site_url TEXT,
+                    poster_url TEXT,
+                    poster_downloaded INTEGER DEFAULT 0,
                     last_scanned_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -85,7 +86,35 @@ class DatabaseManager:
             """)
             conn.commit()
 
-    # =========================================================================
+            # Migration: drop deprecated site_url column if still present (links can be rotated)
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(anime_series)").fetchall()]
+            if "site_url" in cols:
+                conn.executescript("""
+                    CREATE TABLE anime_series_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        folder_path TEXT UNIQUE NOT NULL,
+                        folder_name TEXT NOT NULL,
+                        site_title TEXT,
+                        site_session TEXT,
+                        poster_url TEXT,
+                        poster_downloaded INTEGER DEFAULT 0,
+                        last_scanned_at TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO anime_series_new
+                        SELECT id, folder_path, folder_name, site_title, site_session,
+                               poster_url, poster_downloaded, last_scanned_at, created_at
+                        FROM anime_series;
+                    DROP TABLE anime_series;
+                    ALTER TABLE anime_series_new RENAME TO anime_series;
+                    CREATE INDEX IF NOT EXISTS idx_series_folder_path ON anime_series(folder_path);
+                    CREATE INDEX IF NOT EXISTS idx_series_folder_name ON anime_series(folder_name);
+                    CREATE INDEX IF NOT EXISTS idx_series_site_session ON anime_series(site_session);
+                """)
+                conn.commit()
+                logger.info("Migration: dropped deprecated site_url column from anime_series")
+
+
     # SETTINGS OPERATIONS
     # =========================================================================
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -186,8 +215,7 @@ class DatabaseManager:
         folder_path: Path,
         folder_name: str,
         site_title: Optional[str] = None,
-        site_session: Optional[str] = None,
-        site_url: Optional[str] = None
+        site_session: Optional[str] = None
     ) -> int:
         """Inserts or updates an anime series mapping. Returns series ID."""
         norm_path = str(Path(folder_path).resolve()).replace("\\", "/")
@@ -201,16 +229,15 @@ class DatabaseManager:
                     SET folder_name = ?,
                         site_title = COALESCE(?, site_title),
                         site_session = COALESCE(?, site_session),
-                        site_url = COALESCE(?, site_url),
                         last_scanned_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (folder_name, site_title, site_session, site_url, series_id))
+                """, (folder_name, site_title, site_session, series_id))
             else:
                 cursor = conn.execute("""
                     INSERT INTO anime_series (
-                        folder_path, folder_name, site_title, site_session, site_url, last_scanned_at
-                    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (norm_path, folder_name, site_title, site_session, site_url))
+                        folder_path, folder_name, site_title, site_session, last_scanned_at
+                    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (norm_path, folder_name, site_title, site_session))
                 series_id = cursor.lastrowid
 
             conn.commit()
