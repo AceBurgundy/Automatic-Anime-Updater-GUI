@@ -1,38 +1,55 @@
-import json
-import logging
-import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from json import loads as json_loads
+from logging import Logger, getLogger
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from sqlite3 import Connection, Cursor, Error as SqliteError, Row, connect as sqlite3_connect
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple
 
-logger = logging.getLogger("anime_refresher.database")
+logger: Logger = getLogger("anime_refresher.database")
+
 
 class DatabaseManager:
     """Thread-safe SQLite3 database manager for Anime Refresher state, cache, and settings."""
 
-    def __init__(self, db_path: Path):
-        self.db_path = Path(db_path)
+    db_path: Path
+
+    def __init__(self, db_path: Path) -> None:
+        """
+        Initialize database connection manager and ensure schema tables exist.
+
+        Parameters
+        ----------
+        db_path : Path
+            File system path to the SQLite database file.
+        """
+        self.db_path: Path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     @contextmanager
-    def _get_connection(self):
-        """Context manager that yields a configured SQLite connection and guarantees closing."""
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
-        try:
-            yield conn
-        finally:
-            conn.close()
+    def _get_connection(self) -> Generator[Connection, None, None]:
+        """
+        Context manager that yields a configured SQLite connection and guarantees closing.
 
+        Yields
+        ------
+        Connection
+            Active SQLite connection configured with WAL journal mode and Row factory.
+        """
+        connection: Connection = sqlite3_connect(str(self.db_path), timeout=30.0)
+        connection.row_factory = Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode = WAL")
+        try:
+            yield connection
+        finally:
+            connection.close()
 
     def _init_db(self) -> None:
-        """Initializes database tables and indexes."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
+        """Initialize database tables and indexes."""
+        with self._get_connection() as connection:
+            cursor: Cursor = connection.cursor()
             cursor.executescript("""
                 CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
@@ -84,12 +101,15 @@ class DatabaseManager:
                 CREATE INDEX IF NOT EXISTS idx_series_site_session ON anime_series(site_session);
                 CREATE INDEX IF NOT EXISTS idx_episodes_series_ep ON downloaded_episodes(series_id, episode_number);
             """)
-            conn.commit()
+            connection.commit()
 
             # Migration: drop deprecated site_url column if still present (links can be rotated)
-            cols = [row[1] for row in conn.execute("PRAGMA table_info(anime_series)").fetchall()]
-            if "site_url" in cols:
-                conn.executescript("""
+            columns: List[str] = [
+                row[1]
+                for row in connection.execute("PRAGMA table_info(anime_series)").fetchall()
+            ]
+            if "site_url" in columns:
+                connection.executescript("""
                     CREATE TABLE anime_series_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         folder_path TEXT UNIQUE NOT NULL,
@@ -111,98 +131,216 @@ class DatabaseManager:
                     CREATE INDEX IF NOT EXISTS idx_series_folder_name ON anime_series(folder_name);
                     CREATE INDEX IF NOT EXISTS idx_series_site_session ON anime_series(site_session);
                 """)
-                conn.commit()
+                connection.commit()
                 logger.info("Migration: dropped deprecated site_url column from anime_series")
-
 
     # Settings operations
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
-        """Gets a configuration setting value."""
-        with self._get_connection() as conn:
-            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        """
+        Get a configuration setting value.
+
+        Parameters
+        ----------
+        key : str
+            Configuration key name.
+        default : Optional[str], default=None
+            Fallback value if key is not found.
+
+        Returns
+        -------
+        Optional[str]
+            Stored setting string value, or default.
+        """
+        with self._get_connection() as connection:
+            row: Optional[Row] = connection.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
             return row["value"] if row else default
 
     def set_setting(self, key: str, value: str) -> None:
-        """Sets or updates a configuration setting value."""
-        with self._get_connection() as conn:
-            conn.execute(
+        """
+        Set or update a configuration setting value.
+
+        Parameters
+        ----------
+        key : str
+            Configuration key name.
+        value : str
+            String value to store.
+        """
+        with self._get_connection() as connection:
+            connection.execute(
                 "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
-                (key, str(value))
+                (key, str(value)),
             )
-            conn.commit()
+            connection.commit()
 
     def get_bool_setting(self, key: str, default: bool = False) -> bool:
-        """Gets a boolean setting value."""
-        val = self.get_setting(key)
-        if val is None:
+        """
+        Get a boolean setting value.
+
+        Parameters
+        ----------
+        key : str
+            Configuration key name.
+        default : bool, default=False
+            Fallback value if key is not found.
+
+        Returns
+        -------
+        bool
+            Parsed boolean value.
+        """
+        value: Optional[str] = self.get_setting(key)
+        if value is None:
             return default
-        return val.strip().lower() in ("1", "true", "yes", "on")
+        return value.strip().lower() in ("1", "true", "yes", "on")
 
     def set_bool_setting(self, key: str, value: bool) -> None:
-        """Sets a boolean setting value."""
+        """
+        Set a boolean setting value.
+
+        Parameters
+        ----------
+        key : str
+            Configuration key name.
+        value : bool
+            Boolean value to store.
+        """
         self.set_setting(key, "1" if value else "0")
 
     # Ignored items operations
     def get_ignored_items(self) -> List[str]:
-        """Returns all currently ignored patterns / names."""
-        with self._get_connection() as conn:
-            rows = conn.execute("SELECT pattern FROM ignored_items ORDER BY id ASC").fetchall()
-            return [r["pattern"] for r in rows]
+        """
+        Return all currently ignored patterns / names.
+
+        Returns
+        -------
+        List[str]
+            List of ignored pattern strings.
+        """
+        with self._get_connection() as connection:
+            rows: List[Row] = connection.execute(
+                "SELECT pattern FROM ignored_items ORDER BY id ASC"
+            ).fetchall()
+            return [row["pattern"] for row in rows]
 
     def add_ignored_items(self, patterns: List[str], item_type: str = "pattern") -> int:
-        """Adds patterns to the ignored list. Returns count of newly inserted items."""
-        added = 0
-        with self._get_connection() as conn:
-            for pat in patterns:
-                clean = pat.strip()
-                if not clean:
+        """
+        Add patterns to the ignored list.
+
+        Parameters
+        ----------
+        patterns : List[str]
+            List of pattern strings to ignore.
+        item_type : str, default="pattern"
+            Descriptor for pattern classification.
+
+        Returns
+        -------
+        int
+            Count of newly inserted items.
+        """
+        added_count: int = 0
+        with self._get_connection() as connection:
+            for pattern in patterns:
+                cleaned_pattern: str = pattern.strip()
+                if not cleaned_pattern:
                     continue
                 try:
-                    conn.execute(
+                    connection.execute(
                         "INSERT OR IGNORE INTO ignored_items (pattern, item_type) VALUES (?, ?)",
-                        (clean, item_type)
+                        (cleaned_pattern, item_type),
                     )
-                    if conn.total_changes:
-                        added += 1
-                except sqlite3.Error as e:
-                    logger.error(f"Error adding ignored pattern '{clean}': {e}")
-            conn.commit()
-        return added
+                    if connection.total_changes:
+                        added_count += 1
+                except SqliteError as sqlite_error:
+                    logger.error(
+                        f"Error adding ignored pattern '{cleaned_pattern}': {sqlite_error}"
+                    )
+            connection.commit()
+        return added_count
 
     def remove_ignored_items(self, patterns: List[str]) -> List[str]:
-        """Removes specified patterns (case-insensitive) from ignored list. Returns removed items."""
-        removed = []
-        with self._get_connection() as conn:
-            for pat in patterns:
-                clean = pat.strip()
-                if not clean:
+        """
+        Remove specified patterns (case-insensitive) from ignored list.
+
+        Parameters
+        ----------
+        patterns : List[str]
+            Patterns to match and remove.
+
+        Returns
+        -------
+        List[str]
+            List of pattern strings successfully removed.
+        """
+        removed_items: List[str] = []
+        with self._get_connection() as connection:
+            for pattern in patterns:
+                cleaned_pattern: str = pattern.strip()
+                if not cleaned_pattern:
                     continue
-                row = conn.execute("SELECT pattern FROM ignored_items WHERE LOWER(pattern) = LOWER(?)", (clean,)).fetchone()
+                row: Optional[Row] = connection.execute(
+                    "SELECT pattern FROM ignored_items WHERE LOWER(pattern) = LOWER(?)",
+                    (cleaned_pattern,),
+                ).fetchone()
                 if row:
-                    removed.append(row["pattern"])
-                    conn.execute("DELETE FROM ignored_items WHERE LOWER(pattern) = LOWER(?)", (clean,))
-            conn.commit()
-        return removed
+                    removed_items.append(row["pattern"])
+                    connection.execute(
+                        "DELETE FROM ignored_items WHERE LOWER(pattern) = LOWER(?)",
+                        (cleaned_pattern,),
+                    )
+            connection.commit()
+        return removed_items
 
     def clear_ignored_items(self) -> None:
-        """Clears all entries from the ignored items table."""
-        with self._get_connection() as conn:
-            conn.execute("DELETE FROM ignored_items")
-            conn.commit()
+        """Clear all entries from the ignored items table."""
+        with self._get_connection() as connection:
+            connection.execute("DELETE FROM ignored_items")
+            connection.commit()
 
     # Anime series & mapping operations
     def get_series_by_folder_path(self, folder_path: Path) -> Optional[Dict[str, Any]]:
-        """Retrieves cached series record by absolute folder path."""
-        norm_path = str(Path(folder_path).resolve()).replace("\\", "/")
-        with self._get_connection() as conn:
-            row = conn.execute("SELECT * FROM anime_series WHERE folder_path = ?", (norm_path,)).fetchone()
+        """
+        Retrieve cached series record by absolute folder path.
+
+        Parameters
+        ----------
+        folder_path : Path
+            Filesystem folder path to query.
+
+        Returns
+        -------
+        Optional[Dict[str, Any]]
+            Series record dictionary if found, None otherwise.
+        """
+        normalized_path: str = str(Path(folder_path).resolve()).replace("\\", "/")
+        with self._get_connection() as connection:
+            row: Optional[Row] = connection.execute(
+                "SELECT * FROM anime_series WHERE folder_path = ?", (normalized_path,)
+            ).fetchone()
             return dict(row) if row else None
 
     def get_series_by_id(self, series_id: int) -> Optional[Dict[str, Any]]:
-        """Retrieves series record by primary key ID."""
-        with self._get_connection() as conn:
-            row = conn.execute("SELECT * FROM anime_series WHERE id = ?", (series_id,)).fetchone()
+        """
+        Retrieve series record by primary key ID.
+
+        Parameters
+        ----------
+        series_id : int
+            Primary key ID in anime_series.
+
+        Returns
+        -------
+        Optional[Dict[str, Any]]
+            Series record dictionary if found, None otherwise.
+        """
+        with self._get_connection() as connection:
+            row: Optional[Row] = connection.execute(
+                "SELECT * FROM anime_series WHERE id = ?", (series_id,)
+            ).fetchone()
             return dict(row) if row else None
 
     def upsert_series(
@@ -210,48 +348,59 @@ class DatabaseManager:
         folder_path: Path,
         folder_name: str,
         site_title: Optional[str] = None,
-        site_session: Optional[str] = None
+        site_session: Optional[str] = None,
     ) -> int:
         """
         Insert or update an anime series mapping.
 
         Parameters
         ----------
-        folder_path (Path): Absolute path to the local anime folder.
-        folder_name (str): Local folder name of the series.
-        site_title (Optional[str]): Official title resolved on Animepahe.
-        site_session (Optional[str]): Session identifier on Animepahe.
+        folder_path : Path
+            Absolute path to the local anime folder.
+        folder_name : str
+            Local folder name of the series.
+        site_title : Optional[str], default=None
+            Official title resolved on Animepahe.
+        site_session : Optional[str], default=None
+            Session identifier on Animepahe.
 
         Returns
         -------
-        int: Primary key ID of the series in the database.
+        int
+            Primary key ID of the series in the database.
         """
         normalized_path: str = str(Path(folder_path).resolve()).replace("\\", "/")
-        with self._get_connection() as conn:
-            existing: Optional[sqlite3.Row] = conn.execute(
+        with self._get_connection() as connection:
+            existing: Optional[Row] = connection.execute(
                 "SELECT id FROM anime_series WHERE folder_path = ?", (normalized_path,)
             ).fetchone()
 
             series_id: int
             if existing:
                 series_id = int(existing["id"])
-                conn.execute("""
+                connection.execute(
+                    """
                     UPDATE anime_series
                     SET folder_name = ?,
                         site_title = COALESCE(?, site_title),
                         site_session = COALESCE(?, site_session),
                         last_scanned_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (folder_name, site_title, site_session, series_id))
+                """,
+                    (folder_name, site_title, site_session, series_id),
+                )
             else:
-                cursor: sqlite3.Cursor = conn.execute("""
+                cursor: Cursor = connection.execute(
+                    """
                     INSERT INTO anime_series (
                         folder_path, folder_name, site_title, site_session, last_scanned_at
                     ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (normalized_path, folder_name, site_title, site_session))
+                """,
+                    (normalized_path, folder_name, site_title, site_session),
+                )
                 series_id = int(cursor.lastrowid)
 
-            conn.commit()
+            connection.commit()
             return series_id
 
     # Downloaded episodes operations
@@ -261,11 +410,27 @@ class DatabaseManager:
         episode_number: int,
         filename: str,
         resolution: str = "",
-        audio: str = ""
+        audio: str = "",
     ) -> None:
-        """Records a successfully downloaded episode in the database."""
-        with self._get_connection() as conn:
-            conn.execute("""
+        """
+        Record a successfully downloaded episode in the database.
+
+        Parameters
+        ----------
+        series_id : int
+            Foreign key series ID.
+        episode_number : int
+            Episode number downloaded.
+        filename : str
+            Filename placed in the folder.
+        resolution : str, default=""
+            Video resolution tag.
+        audio : str, default=""
+            Audio track preference tag.
+        """
+        with self._get_connection() as connection:
+            connection.execute(
+                """
                 INSERT INTO downloaded_episodes (
                     series_id, episode_number, filename, resolution, audio, downloaded_at
                 ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -274,103 +439,189 @@ class DatabaseManager:
                     resolution = excluded.resolution,
                     audio = excluded.audio,
                     downloaded_at = CURRENT_TIMESTAMP
-            """, (series_id, episode_number, filename, resolution, audio))
-            conn.commit()
+            """,
+                (series_id, episode_number, filename, resolution, audio),
+            )
+            connection.commit()
 
     def get_downloaded_episodes_for_series(self, series_id: int) -> Set[int]:
-        """Returns set of episode numbers recorded as downloaded for a series."""
-        with self._get_connection() as conn:
-            rows = conn.execute("SELECT episode_number FROM downloaded_episodes WHERE series_id = ?", (series_id,)).fetchall()
-            return {r["episode_number"] for r in rows}
+        """
+        Return set of episode numbers recorded as downloaded for a series.
+
+        Parameters
+        ----------
+        series_id : int
+            Foreign key series ID.
+
+        Returns
+        -------
+        Set[int]
+            Set of recorded episode numbers.
+        """
+        with self._get_connection() as connection:
+            rows: List[Row] = connection.execute(
+                "SELECT episode_number FROM downloaded_episodes WHERE series_id = ?",
+                (series_id,),
+            ).fetchall()
+            return {row["episode_number"] for row in rows}
 
     def is_episode_downloaded(self, series_id: int, episode_number: int) -> bool:
-        """Checks if a specific episode number is recorded as downloaded."""
-        with self._get_connection() as conn:
-            row = conn.execute(
+        """
+        Check if a specific episode number is recorded as downloaded.
+
+        Parameters
+        ----------
+        series_id : int
+            Foreign key series ID.
+        episode_number : int
+            Episode sequence number to check.
+
+        Returns
+        -------
+        bool
+            True if present in downloaded_episodes, False otherwise.
+        """
+        with self._get_connection() as connection:
+            row: Optional[Row] = connection.execute(
                 "SELECT 1 FROM downloaded_episodes WHERE series_id = ? AND episode_number = ?",
-                (series_id, episode_number)
+                (series_id, episode_number),
             ).fetchone()
             return bool(row)
 
     # History & logging operations
-    def record_run_history(self, downloaded_count: int, error_count: int, notes: str = "") -> None:
-        """Records a pipeline run summary into the history table."""
-        with self._get_connection() as conn:
-            conn.execute("""
+    def record_run_history(
+        self, downloaded_count: int, error_count: int, notes: str = ""
+    ) -> None:
+        """
+        Record a pipeline run summary into the history table.
+
+        Parameters
+        ----------
+        downloaded_count : int
+            Number of episodes downloaded during the run.
+        error_count : int
+            Number of errors encountered during the run.
+        notes : str, default=""
+            Contextual details regarding the execution.
+        """
+        with self._get_connection() as connection:
+            connection.execute(
+                """
                 INSERT INTO history (run_timestamp, downloaded_count, error_count, notes)
                 VALUES (CURRENT_TIMESTAMP, ?, ?, ?)
-            """, (downloaded_count, error_count, notes))
+            """,
+                (downloaded_count, error_count, notes),
+            )
             # Keep only the last 100 history records
-            conn.execute("""
+            connection.execute("""
                 DELETE FROM history WHERE id NOT IN (
                     SELECT id FROM history ORDER BY id DESC LIMIT 100
                 )
             """)
-            conn.commit()
+            connection.commit()
 
     # Legacy JSON migration
+    def migrate_legacy_files_if_needed(
+        self, state_file: Optional[Path] = None, ignored_file: Optional[Path] = None
+    ) -> None:
+        """
+        Import data from legacy state.json and ignored.json / exceptions.json if present (runs once).
 
-    def migrate_legacy_files_if_needed(self, state_file: Optional[Path] = None, ignored_file: Optional[Path] = None) -> None:
-        """Imports data from legacy state.json and ignored.json / exceptions.json if present (runs once)."""
+        Parameters
+        ----------
+        state_file : Optional[Path], default=None
+            Path to legacy state.json file.
+        ignored_file : Optional[Path], default=None
+            Path to legacy ignored.json file.
+        """
         if self.get_setting("legacy_files_migrated") == "1":
             return
 
-        with self._get_connection() as conn:
+        with self._get_connection() as connection:
             # 1. Migrate Ignored Items
             if ignored_file and ignored_file.exists():
                 try:
-                    content = ignored_file.read_text(encoding="utf-8")
-                    data = json.loads(content)
-                    if isinstance(data, list):
-                        items = [str(x).strip() for x in data if str(x).strip()]
+                    content: str = ignored_file.read_text(encoding="utf-8")
+                    ignored_data: Any = json_loads(content)
+                    if isinstance(ignored_data, list):
+                        items: List[str] = [
+                            str(item).strip() for item in ignored_data if str(item).strip()
+                        ]
                         for item in items:
-                            conn.execute("INSERT OR IGNORE INTO ignored_items (pattern) VALUES (?)", (item,))
-                        logger.info(f"Migrated {len(items)} ignored items from {ignored_file.name} to SQLite.")
-                except Exception as e:
-                    logger.warning(f"Could not migrate legacy ignored file {ignored_file}: {e}")
+                            connection.execute(
+                                "INSERT OR IGNORE INTO ignored_items (pattern) VALUES (?)",
+                                (item,),
+                            )
+                        logger.info(
+                            f"Migrated {len(items)} ignored items from {ignored_file.name} to SQLite."
+                        )
+                except Exception as migrate_error:
+                    logger.warning(
+                        f"Could not migrate legacy ignored file {ignored_file}: {migrate_error}"
+                    )
 
             # 2. Migrate State File (downloaded episodes & history)
             if state_file and state_file.exists():
                 try:
-                    content = state_file.read_text(encoding="utf-8")
-                    data = json.loads(content)
-                    if isinstance(data, dict):
+                    state_content: str = state_file.read_text(encoding="utf-8")
+                    state_data: Any = json_loads(state_content)
+                    if isinstance(state_data, dict):
                         # Migrate downloaded episodes
-                        episodes_dict = data.get("downloaded_episodes", {})
-                        for folder_name, eps in episodes_dict.items():
-                            if not isinstance(eps, list):
+                        episodes_dict: Dict[str, Any] = state_data.get("downloaded_episodes", {})
+                        for folder_name, episodes_list in episodes_dict.items():
+                            if not isinstance(episodes_list, list):
                                 continue
-                            dummy_path = f"D:/Videos/Anime Unwatched/{folder_name}"
-                            conn.execute("""
+                            dummy_path: str = f"D:/Videos/Anime Unwatched/{folder_name}"
+                            connection.execute(
+                                """
                                 INSERT OR IGNORE INTO anime_series (folder_path, folder_name)
                                 VALUES (?, ?)
-                            """, (dummy_path, folder_name))
-                            cur = conn.execute("SELECT id FROM anime_series WHERE folder_path = ?", (dummy_path,))
-                            row = cur.fetchone()
-                            series_id = row[0] if row else None
+                            """,
+                                (dummy_path, folder_name),
+                            )
+                            cursor: Cursor = connection.execute(
+                                "SELECT id FROM anime_series WHERE folder_path = ?",
+                                (dummy_path,),
+                            )
+                            row: Optional[Row] = cursor.fetchone()
+                            series_id: Optional[int] = row[0] if row else None
                             if series_id:
-                                for ep in eps:
-                                    if isinstance(ep, int):
-                                        conn.execute("""
-                                            INSERT OR IGNORE INTO episodes (series_id, episode_number, filename)
+                                for episode_num in episodes_list:
+                                    if isinstance(episode_num, int):
+                                        connection.execute(
+                                            """
+                                            INSERT OR IGNORE INTO downloaded_episodes (series_id, episode_number, filename)
                                             VALUES (?, ?, ?)
-                                        """, (series_id, ep, f"{folder_name} {ep:02d}.mp4"))
+                                        """,
+                                            (
+                                                series_id,
+                                                episode_num,
+                                                f"{folder_name} {episode_num:02d}.mp4",
+                                            ),
+                                        )
 
                         # Migrate history
-                        history_list = data.get("history", [])
-                        for h in history_list:
-                            if isinstance(h, dict):
-                                conn.execute("""
+                        history_list: List[Any] = state_data.get("history", [])
+                        for history_item in history_list:
+                            if isinstance(history_item, dict):
+                                connection.execute(
+                                    """
                                     INSERT INTO history (downloaded_count, error_count, notes)
                                     VALUES (?, ?, ?)
-                                """, (
-                                    h.get("downloaded", 0),
-                                    h.get("errors", 0),
-                                    h.get("notes", "Migrated from state.json")
-                                ))
+                                """,
+                                    (
+                                        history_item.get("downloaded", 0),
+                                        history_item.get("errors", 0),
+                                        history_item.get("notes", "Migrated from state.json"),
+                                    ),
+                                )
                         logger.info(f"Migrated legacy state from {state_file.name} to SQLite.")
-                except Exception as e:
-                    logger.warning(f"Could not migrate legacy state file {state_file}: {e}")
+                except Exception as state_error:
+                    logger.warning(
+                        f"Could not migrate legacy state file {state_file}: {state_error}"
+                    )
 
-            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('legacy_files_migrated', '1')")
-            conn.commit()
+            connection.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('legacy_files_migrated', '1')"
+            )
+            connection.commit()
