@@ -236,8 +236,6 @@ class _TasksViewState extends State<TasksView> {
   String _searchQuery = '';
   final Set<String> _expandedTaskIds = <String>{};
 
-  late List<TaskItemData> _tasks;
-
   static const List<TaskItemData> _demoTasks = <TaskItemData>[
     TaskItemData(
       id: 'task_1',
@@ -304,12 +302,6 @@ class _TasksViewState extends State<TasksView> {
   @override
   void initState() {
     super.initState();
-    _syncTasks();
-  }
-
-  void _syncTasks() {
-    // If no tasks generated yet, show demo preview
-    _tasks = List<TaskItemData>.from(_demoTasks);
   }
 
   @override
