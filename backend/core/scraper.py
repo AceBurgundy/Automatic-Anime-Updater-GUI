@@ -63,14 +63,14 @@ class AnimepaheScraper:
         headless: bool = HEADLESS,
         browser_type: str = BROWSER_TYPE,
         audio_preference: str = AUDIO_PREFERENCE,
-        preferred_resolution: str = PREFERRED_RESOLUTION
+        preferred_resolution: Optional[str] = None
     ):
         self.state_manager = state_manager
         self.base_urls = base_urls or BASE_URLS
         self.headless = headless
         self.browser_type = browser_type.lower()
         self.audio_preference = audio_preference.lower()
-        self.preferred_resolution = preferred_resolution.lower().rstrip("p")
+        self.preferred_resolution = preferred_resolution.lower().rstrip("p") if preferred_resolution else None
         self.active_base_url = self.base_urls[0]
         self.ai_helper = AIHelper()
         self.profile_dir = PROJECT_DIR / ".browser_profile"
@@ -779,37 +779,47 @@ class AnimepaheScraper:
         if not usable_options:
             usable_options = options
 
-        target_res = (preferred_resolution or self.preferred_resolution).lower().rstrip("p")
-        if target_res not in RESOLUTION_PRIORITY_MAP:
-            target_res = DEFAULT_PREFERRED_RESOLUTION
+        explicit_res = preferred_resolution or self.preferred_resolution
+        if explicit_res:
+            target_res = explicit_res.lower().rstrip("p")
+            if target_res not in RESOLUTION_PRIORITY_MAP:
+                target_res = DEFAULT_PREFERRED_RESOLUTION
 
-        exact_res_tag = f"{target_res}p"
-        priority_list = RESOLUTION_PRIORITY_MAP.get(target_res, ["1080p", "720p", "480p", "360p"])
+            exact_res_tag = f"{target_res}p"
+            priority_list = RESOLUTION_PRIORITY_MAP.get(target_res, ["1080p", "720p", "480p", "360p"])
 
-        # Check for exact preferred resolution
-        has_exact = any(exact_res_tag in opt["text"] for opt in usable_options)
-        if has_exact:
-            for opt in usable_options:
-                if exact_res_tag in opt["text"]:
-                    self.state_manager.reset_viewed_count(anime_title, episode_num)
-                    logger.info(f"Selected exact preferred {exact_res_tag} ({self.audio_preference.upper()}): '{opt['text']}'")
-                    return opt
+            # Check for exact preferred resolution
+            has_exact = any(exact_res_tag in opt["text"] for opt in usable_options)
+            if has_exact:
+                for opt in usable_options:
+                    if exact_res_tag in opt["text"]:
+                        self.state_manager.reset_viewed_count(anime_title, episode_num)
+                        logger.info(f"Selected exact preferred {exact_res_tag} ({self.audio_preference.upper()}): '{opt['text']}'")
+                        return opt
 
-        # Exact preferred resolution missing -> Execute Wait & Retry Protocol
-        viewed_count = self.state_manager.increment_viewed_count(anime_title, episode_num)
-        logger.info(f"{exact_res_tag} missing for '{anime_title}' Ep {episode_num}. Retry count: {viewed_count}/{FALLBACK_MAX_RETRIES}")
+            # Exact preferred resolution missing -> Execute Wait & Retry Protocol
+            viewed_count = self.state_manager.increment_viewed_count(anime_title, episode_num)
+            logger.info(f"{exact_res_tag} missing for '{anime_title}' Ep {episode_num}. Retry count: {viewed_count}/{FALLBACK_MAX_RETRIES}")
 
-        if viewed_count < FALLBACK_MAX_RETRIES:
-            logger.info(f"Skipping episode {episode_num} for this run awaiting {exact_res_tag} release.")
-            return None
+            if viewed_count < FALLBACK_MAX_RETRIES:
+                logger.info(f"Skipping episode {episode_num} for this run awaiting {exact_res_tag} release.")
+                return None
 
-        # Threshold reached -> Closest resolution fallback routing
-        logger.info(f"Threshold reached ({viewed_count} runs). Falling back to closest available resolution.")
-        for res_tag in priority_list:
-            match = next((opt for opt in usable_options if res_tag in opt["text"]), None)
-            if match:
-                logger.info(f"Selected closest fallback resolution '{res_tag}': '{match['text']}'")
-                return match
+            # Threshold reached -> Follow explicit fallback routing
+            logger.info(f"Threshold reached ({viewed_count} runs). Falling back according to {exact_res_tag} priority routing: {priority_list}")
+            for res_tag in priority_list:
+                match = next((opt for opt in usable_options if res_tag in opt["text"]), None)
+                if match:
+                    logger.info(f"Selected fallback resolution '{res_tag}': '{match['text']}'")
+                    return match
+        else:
+            # Highest Quality First: 1080p -> 720p -> 480p -> 360p
+            highest_quality_routing = ["1080p", "720p", "480p", "360p"]
+            for res_tag in highest_quality_routing:
+                match = next((opt for opt in usable_options if res_tag in opt["text"]), None)
+                if match:
+                    logger.info(f"Highest Quality First selected '{res_tag}': '{match['text']}'")
+                    return match
 
         # Final fallback to first usable option
         if usable_options:
@@ -896,7 +906,11 @@ class AnimepaheScraper:
                     return show_title or anime_session, episodes
 
             # If API yielded 0 episodes or session extraction was absent, fallback to page navigation & DOM
-            page, _ = await self._safe_goto(play_url, wait_until="commit", timeout=25000)
+            fallback_nav_url = play_url
+            if anime_session and play_url.rstrip('/').endswith(f"/play/{anime_session}"):
+                fallback_nav_url = f"{self.active_base_url}/anime/{anime_session}"
+
+            page, _ = await self._safe_goto(fallback_nav_url, wait_until="commit", timeout=25000)
             await self._handle_cloudflare_if_present(page, max_wait=20)
             await self.jitter(0.5, 1.5)
 
