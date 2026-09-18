@@ -1,10 +1,12 @@
-import io
-import json
-import time
-import unittest
-import tempfile
-import shutil
+from asyncio import run as asyncio_run
+from os import utime
 from pathlib import Path
+from shutil import rmtree
+from tempfile import mkdtemp
+from time import perf_counter, time as current_timestamp
+from unittest import TestCase, main as unittest_main
+from unittest.mock import AsyncMock
+
 from PIL import Image
 
 from core.state_manager import StateManager
@@ -18,19 +20,17 @@ from core.model_manager import ModelManager
 from core.safety import SafetyGuard, SafetyViolationError
 
 
-class TestAnimeRefresherComponents(unittest.TestCase):
+class TestAnimeRefresherComponents(TestCase):
     def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp())
+        self.test_dir = Path(mkdtemp())
         self.state_file = self.test_dir / "test_state.json"
         self.temp_download_dir = self.test_dir / "temp"
         self.temp_download_dir.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
-        shutil.rmtree(self.test_dir, ignore_errors=True)
+        rmtree(self.test_dir, ignore_errors=True)
 
-    # =========================================================================
     # 1. StateManager Tests & Stress Testing
-    # =========================================================================
     def test_state_manager_basic_operations(self):
         sm = StateManager(state_file=self.state_file)
         self.assertEqual(sm.get_viewed_count("Test Anime", 1), 0)
@@ -78,9 +78,7 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         self.assertIn("history", sm_recovered.data)
         self.assertEqual(sm_recovered.get_viewed_count("Any", 1), 0)
 
-    # =========================================================================
     # 2. AIHelper & Filename Formatting Stress Testing
-    # =========================================================================
     def test_ai_helper_diverse_regex_stress(self):
         ai = AIHelper()
         test_files = [
@@ -168,17 +166,15 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         ai = AIHelper()
         existing = ["My Hero Academia S7 - 01.mp4"]
         
-        start = time.perf_counter()
+        start = perf_counter()
         for i in range(1, 1001):
             _ = ai.format_sequential_filename("My Hero Academia S7", existing, i, ".mp4")
-        elapsed = time.perf_counter() - start
+        elapsed = perf_counter() - start
         
         # 1,000 iterations must take less than 0.15s (ensuring zero external I/O delays)
         self.assertLess(elapsed, 0.15, f"Formatting benchmark too slow: {elapsed:.4f}s for 1000 items")
 
-    # =========================================================================
     # 3. Fuzzy Matching & Scraper Logic
-    # =========================================================================
     def test_fuzzy_matching(self):
         sm = StateManager(state_file=self.state_file)
         scraper = AnimepaheScraper(state_manager=sm)
@@ -249,9 +245,7 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         self.assertEqual(opt_r3["href"], "http://example.com/720p-sub")
 
 
-    # =========================================================================
     # 5. LocalScanner Directory Scanning
-    # =========================================================================
     def test_local_scanner(self):
         anime_dir = self.test_dir / "Anime Unwatched"
         anime_dir.mkdir(parents=True, exist_ok=True)
@@ -286,9 +280,7 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         self.assertEqual(beta_obj.episode_numbers, {1, 2, 3})
         self.assertEqual(len(beta_obj.video_files), 3)
 
-    # =========================================================================
     # 6. SafetyGuard Verification
-    # =========================================================================
     def test_safety_guard_violations(self):
         guard = SafetyGuard(snapshot_path=Path("nonexistent_snapshot.json"))
         
@@ -562,16 +554,15 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         anime_dir.mkdir(parents=True, exist_ok=True)
 
         # Set old timestamp
-        old_time = time.time() - 10000
-        import os
-        os.utime(str(anime_dir), (old_time, old_time))
-        self.assertLess(anime_dir.stat().st_mtime, time.time() - 5000)
+        old_time = current_timestamp() - 10000
+        utime(str(anime_dir), (old_time, old_time))
+        self.assertLess(anime_dir.stat().st_mtime, current_timestamp() - 5000)
 
         # Touch metadata
         success = downloader.touch_folder_metadata(anime_dir)
         self.assertTrue(success)
         # Should now be current time
-        self.assertAlmostEqual(anime_dir.stat().st_mtime, time.time(), delta=5.0)
+        self.assertAlmostEqual(anime_dir.stat().st_mtime, current_timestamp(), delta=5.0)
 
     def test_scanner_and_folder_limiting(self):
         # Create 10 dummy anime folders
@@ -593,9 +584,6 @@ class TestAnimeRefresherComponents(unittest.TestCase):
         self.assertEqual(limited_5[4].name, "Anime Series 05")
 
     def test_scraper_mirror_rotation(self):
-        import asyncio
-        from unittest.mock import AsyncMock
-
         sm = StateManager(state_file=self.state_file)
         mirrors = ["https://animepahe.pw", "https://animepahe.org", "https://animepahe.com", "https://animepahe.ru"]
         scraper = AnimepaheScraper(state_manager=sm, base_urls=mirrors)
@@ -616,10 +604,10 @@ class TestAnimeRefresherComponents(unittest.TestCase):
             m4 = await scraper.rotate_mirror()
             self.assertEqual(m4, "https://animepahe.pw")
 
-        asyncio.run(run_rotation_test())
+        asyncio_run(run_rotation_test())
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest_main()
 
 
