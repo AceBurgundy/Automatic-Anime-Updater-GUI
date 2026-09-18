@@ -212,13 +212,29 @@ class DatabaseManager:
         site_title: Optional[str] = None,
         site_session: Optional[str] = None
     ) -> int:
-        """Inserts or updates an anime series mapping. Returns series ID."""
-        norm_path = str(Path(folder_path).resolve()).replace("\\", "/")
-        with self._get_connection() as conn:
-            existing = conn.execute("SELECT id FROM anime_series WHERE folder_path = ?", (norm_path,)).fetchone()
+        """
+        Insert or update an anime series mapping.
 
+        Parameters
+        ----------
+        folder_path (Path): Absolute path to the local anime folder.
+        folder_name (str): Local folder name of the series.
+        site_title (Optional[str]): Official title resolved on Animepahe.
+        site_session (Optional[str]): Session identifier on Animepahe.
+
+        Returns
+        -------
+        int: Primary key ID of the series in the database.
+        """
+        normalized_path: str = str(Path(folder_path).resolve()).replace("\\", "/")
+        with self._get_connection() as conn:
+            existing: Optional[sqlite3.Row] = conn.execute(
+                "SELECT id FROM anime_series WHERE folder_path = ?", (normalized_path,)
+            ).fetchone()
+
+            series_id: int
             if existing:
-                series_id = existing["id"]
+                series_id = int(existing["id"])
                 conn.execute("""
                     UPDATE anime_series
                     SET folder_name = ?,
@@ -228,12 +244,12 @@ class DatabaseManager:
                     WHERE id = ?
                 """, (folder_name, site_title, site_session, series_id))
             else:
-                cursor = conn.execute("""
+                cursor: sqlite3.Cursor = conn.execute("""
                     INSERT INTO anime_series (
                         folder_path, folder_name, site_title, site_session, last_scanned_at
                     ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (norm_path, folder_name, site_title, site_session))
-                series_id = cursor.lastrowid
+                """, (normalized_path, folder_name, site_title, site_session))
+                series_id = int(cursor.lastrowid)
 
             conn.commit()
             return series_id
