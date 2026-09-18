@@ -1,14 +1,15 @@
-import json
-import logging
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from json import dumps as json_dumps
+from logging import Logger, getLogger
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote_plus
 
 from core.safety import safety_guard
 
-logger = logging.getLogger("anime_refresher.reporter")
+logger: Logger = getLogger("anime_refresher.reporter")
+
 
 @dataclass
 class AnimeErrorEntry:
@@ -22,18 +23,29 @@ class AnimeErrorEntry:
     animepahe_search_url: str
     timestamp: str
 
+
 class ErrorReporter:
     """Manages collection of automation errors and renders an interactive modern errors.html report."""
 
-    def __init__(self):
+    errors: List[AnimeErrorEntry]
+
+    def __init__(self) -> None:
+        """Initialize an empty ErrorReporter collection."""
         self.errors: List[AnimeErrorEntry] = []
 
     def clear(self) -> None:
-        """Clears all in-memory error records."""
+        """Clear all in-memory error records."""
         self.errors.clear()
 
     def has_errors(self) -> bool:
-        """Checks if any errors have been recorded."""
+        """
+        Check if any errors have been recorded.
+
+        Returns
+        -------
+        bool
+            True if one or more error entries exist, False otherwise.
+        """
         return len(self.errors) > 0
 
     def add_title_mismatch_error(
@@ -42,32 +54,51 @@ class ErrorReporter:
         search_query: str,
         closest_candidate: str,
         similarity_score: float,
-        base_url: str = "https://animepahe.pw"
+        base_url: str = "https://animepahe.pw",
     ) -> None:
-        """Records a title mismatch or low-confidence search result error."""
-        score_pct = int(similarity_score * 100)
-        search_url = f"{base_url.rstrip('/')}/?q={quote_plus(folder_name)}"
-        
-        if closest_candidate:
-            msg = (
-                f"Search for '{folder_name}' returned '{closest_candidate}' as the closest result "
-                f"(Match Confidence: {score_pct}%), which did not meet the required matching threshold."
-            )
-            suggestion = f"Please rename the folder to '{closest_candidate}' or check the official site title."
-        else:
-            msg = f"Search query '{search_query}' yielded 0 search results on Animepahe."
-            suggestion = "Please check Animepahe to find the exact official Japanese or English title and rename the folder."
+        """
+        Record a title mismatch or low-confidence search result error.
 
-        entry = AnimeErrorEntry(
+        Parameters
+        ----------
+        folder_name : str
+            Name of the local anime folder.
+        search_query : str
+            Query string submitted to the search provider.
+        closest_candidate : str
+            Best match candidate found on the site.
+        similarity_score : float
+            Fuzzy similarity ratio between 0.0 and 1.0.
+        base_url : str, default="https://animepahe.pw"
+            Base URL of the active search mirror.
+        """
+        score_percentage: int = int(similarity_score * 100)
+        search_url: str = f"{base_url.rstrip('/')}/?q={quote_plus(folder_name)}"
+
+        if closest_candidate:
+            message: str = (
+                f"Search for '{folder_name}' returned '{closest_candidate}' as the closest result "
+                f"(Match Confidence: {score_percentage}%), which did not meet the required matching threshold."
+            )
+            suggestion: str = (
+                f"Please rename the folder to '{closest_candidate}' or check the official site title."
+            )
+        else:
+            message: str = f"Search query '{search_query}' yielded 0 search results on Animepahe."
+            suggestion: str = (
+                "Please check Animepahe to find the exact official Japanese or English title and rename the folder."
+            )
+
+        entry: AnimeErrorEntry = AnimeErrorEntry(
             folder_name=folder_name,
             search_query=search_query,
             closest_candidate=closest_candidate or "None found",
             similarity_score=round(similarity_score, 2),
             error_type="title_mismatch" if closest_candidate else "not_found",
-            human_message=msg,
+            human_message=message,
             suggested_action=suggestion,
             animepahe_search_url=search_url,
-            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
         self.errors.append(entry)
 
@@ -77,11 +108,26 @@ class ErrorReporter:
         error_type: str,
         message: str,
         suggestion: str = "",
-        base_url: str = "https://animepahe.pw"
+        base_url: str = "https://animepahe.pw",
     ) -> None:
-        """Records a general download, network, or extraction failure."""
-        search_url = f"{base_url.rstrip('/')}/?q={quote_plus(folder_name)}"
-        entry = AnimeErrorEntry(
+        """
+        Record a general download, network, or extraction failure.
+
+        Parameters
+        ----------
+        folder_name : str
+            Name of the local anime folder.
+        error_type : str
+            Categorical identifier for the error.
+        message : str
+            Human-readable message describing the failure.
+        suggestion : str, default=""
+            Suggested remediation step.
+        base_url : str, default="https://animepahe.pw"
+            Base URL of the active mirror.
+        """
+        search_url: str = f"{base_url.rstrip('/')}/?q={quote_plus(folder_name)}"
+        entry: AnimeErrorEntry = AnimeErrorEntry(
             folder_name=folder_name,
             search_query=folder_name,
             closest_candidate="N/A",
@@ -90,16 +136,28 @@ class ErrorReporter:
             human_message=message,
             suggested_action=suggestion or "Retry during the next automated cycle.",
             animepahe_search_url=search_url,
-            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
         self.errors.append(entry)
 
     def write_html_report(self, output_path: Path) -> bool:
-        """Renders errors.html with an interactive dashboard and embedded JSON data."""
+        """
+        Render errors.html with an interactive dashboard and embedded JSON data.
+
+        Parameters
+        ----------
+        output_path : Path
+            File destination path for the generated HTML report.
+
+        Returns
+        -------
+        bool
+            True if report was generated or cleaned successfully, False on error.
+        """
         try:
             safety_guard.verify_write_safety(output_path)
-        except Exception as e:
-            logger.error(f"Safety violation writing error report: {e}")
+        except Exception as safety_error:
+            logger.error(f"Safety violation writing error report: {safety_error}")
             return False
 
         # If no errors, remove existing error report or write empty clean state
@@ -112,9 +170,13 @@ class ErrorReporter:
                     pass
             return True
 
-        errors_json = json.dumps([asdict(e) for e in self.errors], ensure_ascii=False, indent=2)
+        errors_json: str = json_dumps(
+            [asdict(error_entry) for error_entry in self.errors],
+            ensure_ascii=False,
+            indent=2,
+        )
 
-        html_content = f"""<!DOCTYPE html>
+        html_content: str = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -483,9 +545,10 @@ class ErrorReporter:
             output_path.write_text(html_content, encoding="utf-8")
             logger.info(f"Generated interactive error report at: {output_path}")
             return True
-        except Exception as e:
-            logger.error(f"Failed to write HTML error report: {e}")
+        except Exception as write_error:
+            logger.error(f"Failed to write HTML error report: {write_error}")
             return False
 
+
 # Global reporter instance
-error_reporter = ErrorReporter()
+error_reporter: ErrorReporter = ErrorReporter()
