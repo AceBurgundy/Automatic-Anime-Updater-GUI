@@ -1,11 +1,13 @@
-import logging
 from dataclasses import dataclass
+from logging import Logger, getLogger
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+
 from config import TARGET_DIR, VIDEO_EXTENSIONS
 from core.ai_helper import AIHelper
 
-logger = logging.getLogger("anime_refresher.scanner")
+logger: Logger = getLogger("anime_refresher.scanner")
+
 
 @dataclass
 class AnimeLocalState:
@@ -14,6 +16,7 @@ class AnimeLocalState:
     existing_files: List[str]
     downloaded_episodes: Set[int]
 
+
 @dataclass
 class AnimeFolder:
     name: str
@@ -21,60 +24,109 @@ class AnimeFolder:
     video_files: List[Path]
     episode_numbers: Set[int]
 
+
 class LocalScanner:
+    target_dir: Path
+    ai_helper: AIHelper
+    ignored: List[str]
+    _normalized_ignored: Set[str]
+
     def __init__(
         self,
         target_dir: Path = TARGET_DIR,
-        ai_helper: AIHelper = None,
-        ignored: Optional[List[str]] = None
-    ):
-        self.target_dir = target_dir
-        self.ai_helper = ai_helper or AIHelper()
-        self.ignored = ignored or []
-        self._normalized_ignored = self._normalize_ignored(self.ignored)
+        ai_helper: Optional[AIHelper] = None,
+        ignored: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Initialize the local filesystem scanner for unwatched anime directories.
+
+        Parameters
+        ----------
+        target_dir : Path, default=TARGET_DIR
+            Base directory containing local anime series folders.
+        ai_helper : Optional[AIHelper], default=None
+            Instance of AIHelper used for parsing episode numbers.
+        ignored : Optional[List[str]], default=None
+            List of folder or file names / paths to exclude from scanning.
+        """
+        self.target_dir: Path = target_dir
+        self.ai_helper: AIHelper = ai_helper if ai_helper is not None else AIHelper()
+        self.ignored: List[str] = ignored if ignored is not None else []
+        self._normalized_ignored: Set[str] = self._normalize_ignored(self.ignored)
 
     def _normalize_ignored(self, ignored: List[str]) -> Set[str]:
-        """Normalizes ignored strings, handling comma-separated tokens, quotes, and path separators."""
-        norm = set()
+        """
+        Normalize ignored strings, handling comma-separated tokens, quotes, and path separators.
+
+        Parameters
+        ----------
+        ignored : List[str]
+            Raw list of ignored tokens, paths, or names.
+
+        Returns
+        -------
+        Set[str]
+            Normalized set of lowercase strings and path representations.
+        """
+        normalized_ignored: Set[str] = set()
         for item in ignored:
             if not item:
                 continue
             for part in str(item).split(","):
-                clean = part.strip().strip("'\"").strip()
-                if clean:
-                    norm.add(clean.lower())
-                    norm.add(Path(clean).name.lower())
-                    norm.add(clean.replace("\\", "/").lower().strip("/"))
-        return norm
+                cleaned_part: str = part.strip().strip("'\"").strip()
+                if cleaned_part:
+                    normalized_ignored.add(cleaned_part.lower())
+                    normalized_ignored.add(Path(cleaned_part).name.lower())
+                    normalized_ignored.add(cleaned_part.replace("\\", "/").lower().strip("/"))
+        return normalized_ignored
 
     def is_ignored(self, path: Path) -> bool:
-        """Determines whether a file or directory path is in the ignored list."""
+        """
+        Determine whether a file or directory path is in the ignored set.
+
+        Parameters
+        ----------
+        path : Path
+            File or directory path to check against the ignored collection.
+
+        Returns
+        -------
+        bool
+            True if the path matches an ignored rule, False otherwise.
+        """
         if not self._normalized_ignored:
             return False
 
         # 1. Direct name match (e.g. 'Others' or 'another one')
-        name_lower = path.name.lower()
+        name_lower: str = path.name.lower()
         if name_lower in self._normalized_ignored:
             return True
 
         # 2. Relative path from target_dir (e.g. 'another one' or 'Series/others.txt')
         try:
-            rel_path = path.relative_to(self.target_dir).as_posix().lower()
-            if rel_path in self._normalized_ignored:
+            relative_path: str = path.relative_to(self.target_dir).as_posix().lower()
+            if relative_path in self._normalized_ignored:
                 return True
         except ValueError:
             pass
 
         # 3. Direct path string check
-        path_str = str(path).replace("\\", "/").lower()
+        path_string: str = str(path).replace("\\", "/").lower()
         for item in self._normalized_ignored:
-            if path_str.endswith(f"/{item}") or path_str == item:
+            if path_string.endswith(f"/{item}") or path_string == item:
                 return True
 
         return False
 
     def scan_unwatched(self) -> List[AnimeFolder]:
-        """Scans the target directory and returns list of AnimeFolder instances, respecting ignored items."""
+        """
+        Scan the target directory and return list of AnimeFolder instances, respecting ignored items.
+
+        Returns
+        -------
+        List[AnimeFolder]
+            List of detected anime series directories and their contents.
+        """
         if not self.target_dir.exists():
             logger.error(f"Target directory {self.target_dir} does not exist!")
             return []
@@ -91,32 +143,44 @@ class LocalScanner:
                 logger.info(f"Skipping ignored folder: '{entry.name}'")
                 continue
 
-            video_files = [
-                f for f in entry.iterdir()
-                if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS and not self.is_ignored(f)
+            video_files: List[Path] = [
+                file_path
+                for file_path in entry.iterdir()
+                if file_path.is_file()
+                and file_path.suffix.lower() in VIDEO_EXTENSIONS
+                and not self.is_ignored(file_path)
             ]
-            file_names = [f.name for f in video_files]
-            episodes = self.ai_helper.parse_episode_numbers(file_names)
+            file_names: List[str] = [file_path.name for file_path in video_files]
+            episode_numbers: Set[int] = self.ai_helper.parse_episode_numbers(file_names)
 
-            folders.append(AnimeFolder(
-                name=entry.name,
-                path=entry,
-                video_files=video_files,
-                episode_numbers=episodes
-            ))
+            folders.append(
+                AnimeFolder(
+                    name=entry.name,
+                    path=entry,
+                    video_files=video_files,
+                    episode_numbers=episode_numbers,
+                )
+            )
 
         logger.info(f"Scanned {len(folders)} local anime directories in {self.target_dir}")
         return folders
 
     def scan(self) -> Dict[str, AnimeLocalState]:
-        """Scans the unwatched anime target directory and returns mapping of folder name to state."""
-        unwatched = self.scan_unwatched()
+        """
+        Scan the unwatched anime target directory and return mapping of folder name to state.
+
+        Returns
+        -------
+        Dict[str, AnimeLocalState]
+            Dictionary mapping folder name to AnimeLocalState.
+        """
+        unwatched_folders: List[AnimeFolder] = self.scan_unwatched()
         results: Dict[str, AnimeLocalState] = {}
-        for f in unwatched:
-            results[f.name] = AnimeLocalState(
-                folder_name=f.name,
-                folder_path=f.path,
-                existing_files=[vf.name for vf in f.video_files],
-                downloaded_episodes=f.episode_numbers
+        for folder in unwatched_folders:
+            results[folder.name] = AnimeLocalState(
+                folder_name=folder.name,
+                folder_path=folder.path,
+                existing_files=[video_file.name for video_file in folder.video_files],
+                downloaded_episodes=folder.episode_numbers,
             )
         return results
