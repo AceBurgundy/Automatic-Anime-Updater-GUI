@@ -35,6 +35,9 @@ from constants import (
     VIDEO_EXTENSIONS,
     FALLBACK_MAX_RETRIES as CONST_FALLBACK_RETRIES,
     REQUEST_DELAY_SECONDS as CONST_REQUEST_DELAY,
+    DEFAULT_STALL_TIMEOUT_SECONDS,
+    MIN_STALL_TIMEOUT_SECONDS,
+    MAX_STALL_TIMEOUT_SECONDS,
 )
 from core.database import DatabaseManager
 
@@ -117,6 +120,20 @@ FALLBACK_MAX_RETRIES: int = int(getenv("FALLBACK_MAX_RETRIES", str(CONST_FALLBAC
 REQUEST_DELAY_SECONDS: int = int(getenv("REQUEST_DELAY_SECONDS", str(CONST_REQUEST_DELAY)))
 HEADLESS: bool = getenv("HEADLESS", "true").lower() in ("true", "1", "yes")
 BROWSER_TYPE: str = getenv("BROWSER_TYPE", "camoufox").lower()
+
+# Inactivity / Stall Watchdog settings
+raw_stall_timeout: str = getenv(
+    "STALL_TIMEOUT_SECONDS", str(DEFAULT_STALL_TIMEOUT_SECONDS)
+).strip()
+try:
+    parsed_stall_timeout: int = int(raw_stall_timeout)
+    STALL_TIMEOUT_SECONDS: int = max(
+        MIN_STALL_TIMEOUT_SECONDS,
+        min(parsed_stall_timeout, MAX_STALL_TIMEOUT_SECONDS),
+    )
+except ValueError:
+    STALL_TIMEOUT_SECONDS: int = DEFAULT_STALL_TIMEOUT_SECONDS
+
 
 # Legacy files (for auto-migration) & Log files
 STATE_FILE: Path = PROJECT_DIR / "state.json"

@@ -42,3 +42,8 @@ DEFAULT_MIRRORS: List[str] = [
 VIDEO_EXTENSIONS: Set[str] = {".mkv", ".mp4", ".ts", ".avi", ".mov", ".m4v"}
 FALLBACK_MAX_RETRIES: int = 3
 REQUEST_DELAY_SECONDS: int = 60
+
+DEFAULT_STALL_TIMEOUT_SECONDS: int = 45
+MIN_STALL_TIMEOUT_SECONDS: int = 30
+MAX_STALL_TIMEOUT_SECONDS: int = 60
+
