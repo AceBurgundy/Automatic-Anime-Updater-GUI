@@ -108,7 +108,10 @@ class AppIconBtn extends StatefulWidget {
 }
 
 class _AppIconBtnState extends State<AppIconBtn> with SingleTickerProviderStateMixin {
+  /// Animation controller driving the hover micro-animation.
   late final AnimationController _controller;
+
+  /// Curved animation for hover transitions.
   late final Animation<double> _animation;
 
   @override
@@ -131,6 +134,7 @@ class _AppIconBtnState extends State<AppIconBtn> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  /// Updates animation controller direction on mouse hover events.
   void _handleHover(bool isHovered) {
     if (isHovered) {
       _controller.forward();
@@ -139,6 +143,7 @@ class _AppIconBtnState extends State<AppIconBtn> with SingleTickerProviderStateM
     }
   }
 
+  /// Checks whether the button icon represents a clock or time animation.
   bool _isClockIcon() {
     return widget.animationType == AppIconAnimationType.rotateClock ||
         widget.icon == Icons.schedule_rounded ||
@@ -320,14 +325,20 @@ class _AppIconBtnState extends State<AppIconBtn> with SingleTickerProviderStateM
 
 /// Renders a fluid clock icon where hovering smoothly rotates the minute / long hand to its end position.
 class _AnimatedClockWidget extends StatelessWidget {
+  /// Creates an [_AnimatedClockWidget] with animated progress and color styling.
   const _AnimatedClockWidget({
     required this.progress,
     required this.color,
     required this.size,
   });
 
+  /// Current animation progression ratio from 0.0 to 1.0.
   final double progress;
+
+  /// Foreground color for clock hands and outline.
   final Color color;
+
+  /// Target square boundary size in pixels.
   final double size;
 
   @override
@@ -342,13 +353,18 @@ class _AnimatedClockWidget extends StatelessWidget {
   }
 }
 
+/// Custom painter drawing animated clock face and rotating hands.
 class _ClockCustomPainter extends CustomPainter {
+  /// Creates a [_ClockCustomPainter] instance.
   _ClockCustomPainter({
     required this.progress,
     required this.color,
   });
 
+  /// Current animation progression ratio from 0.0 to 1.0.
   final double progress;
+
+  /// Stroke and fill color for clock elements.
   final Color color;
 
   @override

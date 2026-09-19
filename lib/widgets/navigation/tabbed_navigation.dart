@@ -78,7 +78,9 @@ class TabbedNavigation extends StatelessWidget {
   }
 }
 
+/// Internal widget representing an individual tab item within [TabbedNavigation].
 class _TabButton extends StatefulWidget {
+  /// Creates a [_TabButton] widget.
   const _TabButton({
     required this.tab,
     required this.isActive,
@@ -86,9 +88,16 @@ class _TabButton extends StatefulWidget {
     this.tokens,
   });
 
+  /// Associated tab identifier and metadata.
   final AppTab tab;
+
+  /// Whether this tab is currently the active tab.
   final bool isActive;
+
+  /// Callback executed when the user taps on this tab.
   final VoidCallback onTap;
+
+  /// Optional theme color tokens.
   final AppColorTokens? tokens;
 
   @override
@@ -96,6 +105,7 @@ class _TabButton extends StatefulWidget {
 }
 
 class _TabButtonState extends State<_TabButton> {
+  /// Whether the pointer is currently hovering over this tab button.
   bool _isHovered = false;
 
   @override
