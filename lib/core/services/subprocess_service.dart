@@ -6,6 +6,7 @@ import 'cli_bridge_service.dart';
 /// Service providing extensible subprocess execution callback templates.
 /// Bridges UI events with the active `CliBridgeService` background engine.
 class SubprocessService {
+  /// Private constructor for [SubprocessService] singleton pattern.
   SubprocessService._();
 
   /// Singleton shared instance of [SubprocessService].

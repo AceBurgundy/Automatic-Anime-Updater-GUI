@@ -6,7 +6,13 @@ import 'package:path/path.dart' as p;
 
 /// Service managing execution of the background Python AI episode parser subprocess.
 class AiSubprocessService {
+  /// Creates an [AiSubprocessService] instance.
+  AiSubprocessService();
+
+  /// Active system process running the Python AI parser.
   Process? _activeProcess;
+
+  /// Internal flag tracking whether the subprocess is executing.
   bool _isExecuting = false;
 
   /// Whether the AI parser subprocess is actively executing.
@@ -132,7 +138,9 @@ class AiSubprocessService {
     if (_activeProcess != null) {
       try {
         _activeProcess!.kill(ProcessSignal.sigkill);
-      } catch (_) {}
+      } catch (exception) {
+        debugPrint('Notice killing active process: $exception');
+      }
       _activeProcess = null;
       _isExecuting = false;
     }

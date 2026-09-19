@@ -7,6 +7,7 @@ import '../../widgets/views/tasks_view.dart';
 
 /// Configuration state loaded from the backend CLI.
 class CliConfigState {
+  /// Creates a [CliConfigState] instance with optional configuration values.
   const CliConfigState({
     this.targetDirectory = '',
     this.preferredQuality = '1080p',
@@ -16,13 +17,25 @@ class CliConfigState {
     this.folderAsTitle = true,
   });
 
+  /// Target directory path where downloaded anime is stored.
   final String targetDirectory;
+
+  /// Preferred video resolution (e.g. '1080p', '720p').
   final String preferredQuality;
+
+  /// Preferred audio language/release preference (e.g. 'Subbed', 'Dubbed').
   final String preferredAudio;
+
+  /// Whether the AI episode parser model is currently installed.
   final bool isModelInstalled;
+
+  /// File size of the installed AI parser model in megabytes.
   final double modelSizeMb;
+
+  /// Whether folder names are prioritized as anime titles.
   final bool folderAsTitle;
 
+  /// Returns a copy of this [CliConfigState] with specified fields replaced.
   CliConfigState copyWith({
     String? targetDirectory,
     String? preferredQuality,
@@ -45,30 +58,40 @@ class CliConfigState {
 /// Service orchestrating real-time communication, configuration management,
 /// and background subprocess execution with the Python `anime-refresher-cli`.
 class CliBridgeService {
+  /// Private constructor for [CliBridgeService] singleton pattern.
   CliBridgeService._();
 
   /// Shared singleton instance of [CliBridgeService].
   static final CliBridgeService instance = CliBridgeService._();
 
+  /// Active system process running the Python automation engine.
   Process? _activeAutomationProcess;
+
+  /// Active system process running the AI model downloader.
   Process? _activeModelProcess;
+
+  /// Internal flag indicating whether the automation engine is running.
   bool _isAutomationRunning = false;
 
-  final StreamController<TaskItemData> _taskEventController =
-      StreamController<TaskItemData>.broadcast();
+  /// Internal stream controller emitting task item updates.
+  final StreamController<TaskItemData> _taskEventController = StreamController<TaskItemData>.broadcast();
 
-  final ValueNotifier<List<TaskItemData>> _tasksNotifier =
-      ValueNotifier<List<TaskItemData>>(<TaskItemData>[]);
+  /// Internal reactive notifier for the list of task items.
+  final ValueNotifier<List<TaskItemData>> _tasksNotifier = ValueNotifier<List<TaskItemData>>(<TaskItemData>[]);
 
+  /// Internal reactive notifier indicating whether automation is executing.
   final ValueNotifier<bool> _isExecutingNotifier = ValueNotifier<bool>(false);
 
-  final ValueNotifier<CliConfigState> _configNotifier =
-      ValueNotifier<CliConfigState>(const CliConfigState());
+  /// Internal reactive notifier for backend configuration state.
+  final ValueNotifier<CliConfigState> _configNotifier = ValueNotifier<CliConfigState>(const CliConfigState());
 
-  final ValueNotifier<List<String>> _ignoredItemsNotifier =
-      ValueNotifier<List<String>>(<String>[]);
+  /// Internal reactive notifier for the list of ignored items.
+  final ValueNotifier<List<String>> _ignoredItemsNotifier = ValueNotifier<List<String>>(<String>[]);
 
+  /// Periodic timer triggering scheduled automation runs.
   Timer? _schedulerTimer;
+
+  /// Internal reactive notifier for scheduler active state.
   final ValueNotifier<bool> _isSchedulerActiveNotifier = ValueNotifier<bool>(false);
 
   /// Stream of live episode task updates emitted from the CLI engine.
@@ -95,11 +118,11 @@ class CliBridgeService {
   /// Resolves the directory path of the backend Python CLI engine.
   String resolveCliDirectory() {
     // 1. Environment variable override
-    final String? envOverride = Platform.environment['KYAA_BACKEND_DIR'] ??
+    final String? environmentOverride = Platform.environment['KYAA_BACKEND_DIR'] ??
         Platform.environment['KYAA_CLI_DIR'] ??
         Platform.environment['ANIME_REFRESHER_CLI_DIR'];
-    if (envOverride != null && Directory(envOverride).existsSync()) {
-      return envOverride;
+    if (environmentOverride != null && Directory(environmentOverride).existsSync()) {
+      return environmentOverride;
     }
 
     // 2. Check child backend directory (monorepo structure)
@@ -109,9 +132,9 @@ class CliBridgeService {
     }
 
     // 3. Check child anime-refresher-cli directory (legacy)
-    final String childCli = p.normalize(p.join(Directory.current.path, 'anime-refresher-cli'));
-    if (Directory(childCli).existsSync()) {
-      return childCli;
+    final String childCliDirectory = p.normalize(p.join(Directory.current.path, 'anime-refresher-cli'));
+    if (Directory(childCliDirectory).existsSync()) {
+      return childCliDirectory;
     }
 
     // 4. Check sibling backend directory
@@ -121,21 +144,21 @@ class CliBridgeService {
     }
 
     // 5. Check sibling anime-refresher-cli directory
-    final String siblingCli = p.normalize(p.join(Directory.current.path, '..', 'anime-refresher-cli'));
-    if (Directory(siblingCli).existsSync()) {
-      return siblingCli;
+    final String siblingCliDirectory = p.normalize(p.join(Directory.current.path, '..', 'anime-refresher-cli'));
+    if (Directory(siblingCliDirectory).existsSync()) {
+      return siblingCliDirectory;
     }
 
     // 6. Check consolidated Flutter project path
-    final Directory consolidatedDir = Directory(r'D:\Documents\Programming\Frameworks\Flutter\projects\kyaa_anime_refresher\backend');
-    if (consolidatedDir.existsSync()) {
-      return consolidatedDir.path;
+    final Directory consolidatedDirectory = Directory(r'D:\Documents\Programming\Frameworks\Flutter\projects\kyaa_anime_refresher\backend');
+    if (consolidatedDirectory.existsSync()) {
+      return consolidatedDirectory.path;
     }
 
     // 7. Check standalone Automation CLI path
-    final Directory standaloneDir = Directory(r'D:\Documents\Programming\Languages\Python\Automation\anime-refresher-cli');
-    if (standaloneDir.existsSync()) {
-      return standaloneDir.path;
+    final Directory standaloneDirectory = Directory(r'D:\Documents\Programming\Languages\Python\Automation\anime-refresher-cli');
+    if (standaloneDirectory.existsSync()) {
+      return standaloneDirectory.path;
     }
 
     // 8. Fallback to default path
@@ -144,28 +167,28 @@ class CliBridgeService {
 
   /// Resolves the Python binary (prioritizing the local virtual environment).
   String resolvePythonBinary() {
-    final String cliDir = resolveCliDirectory();
+    final String cliDirectory = resolveCliDirectory();
 
     // Prioritize CLI virtual environment Python (env, .venv, venv)
-    final File envPython = File(p.join(cliDir, 'env', 'Scripts', 'python.exe'));
-    if (envPython.existsSync()) {
-      return envPython.path;
+    final File environmentPythonFile = File(p.join(cliDirectory, 'env', 'Scripts', 'python.exe'));
+    if (environmentPythonFile.existsSync()) {
+      return environmentPythonFile.path;
     }
 
-    final File dotVenvPython = File(p.join(cliDir, '.venv', 'Scripts', 'python.exe'));
-    if (dotVenvPython.existsSync()) {
-      return dotVenvPython.path;
+    final File dotVenvPythonFile = File(p.join(cliDirectory, '.venv', 'Scripts', 'python.exe'));
+    if (dotVenvPythonFile.existsSync()) {
+      return dotVenvPythonFile.path;
     }
 
-    final File altVenvPython = File(p.join(cliDir, 'venv', 'Scripts', 'python.exe'));
-    if (altVenvPython.existsSync()) {
-      return altVenvPython.path;
+    final File alternateVenvPythonFile = File(p.join(cliDirectory, 'venv', 'Scripts', 'python.exe'));
+    if (alternateVenvPythonFile.existsSync()) {
+      return alternateVenvPythonFile.path;
     }
 
     // Local kyaa_app env fallback
-    final File localEnvPython = File(p.join(Directory.current.path, 'env', 'Scripts', 'python.exe'));
-    if (localEnvPython.existsSync()) {
-      return localEnvPython.path;
+    final File localEnvironmentPythonFile = File(p.join(Directory.current.path, 'env', 'Scripts', 'python.exe'));
+    if (localEnvironmentPythonFile.existsSync()) {
+      return localEnvironmentPythonFile.path;
     }
 
     return 'python';
@@ -174,21 +197,21 @@ class CliBridgeService {
   /// Loads initial configuration from the CLI `.env` file and model directory.
   Future<void> loadInitialConfig() async {
     try {
-      final String cliDir = resolveCliDirectory();
-      final File envFile = File(p.join(cliDir, '.env'));
-      String targetDir = r'D:\Videos\Anime Unwatched';
+      final String cliDirectory = resolveCliDirectory();
+      final File environmentFile = File(p.join(cliDirectory, '.env'));
+      String targetDirectory = r'D:\Videos\Anime Unwatched';
       String quality = '1080p';
       String audio = 'Subbed';
 
-      if (envFile.existsSync()) {
-        final List<String> lines = await envFile.readAsLines();
+      if (environmentFile.existsSync()) {
+        final List<String> lines = await environmentFile.readAsLines();
         for (final String line in lines) {
           final String trimmed = line.trim();
           if (trimmed.startsWith('TARGET_DIR=')) {
-            targetDir = trimmed.substring('TARGET_DIR='.length).trim();
+            targetDirectory = trimmed.substring('TARGET_DIR='.length).trim();
           } else if (trimmed.startsWith('PREFERRED_RESOLUTION=')) {
-            final String rawRes = trimmed.substring('PREFERRED_RESOLUTION='.length).trim().replaceAll('p', '');
-            quality = '${rawRes}p';
+            final String rawResolution = trimmed.substring('PREFERRED_RESOLUTION='.length).trim().replaceAll('p', '');
+            quality = '${rawResolution}p';
           } else if (trimmed.startsWith('AUDIO_PREFERENCE=')) {
             final String rawAudio = trimmed.substring('AUDIO_PREFERENCE='.length).trim().toLowerCase();
             audio = rawAudio.contains('dub') ? 'Dubbed' : 'Subbed';
@@ -197,11 +220,11 @@ class CliBridgeService {
       }
 
       // Check model file presence
-      final Directory modelsDir = Directory(p.join(cliDir, 'models'));
+      final Directory modelsDirectory = Directory(p.join(cliDirectory, 'models'));
       bool modelPresent = false;
       double modelSizeMb = 0.0;
-      if (modelsDir.existsSync()) {
-        final List<FileSystemEntity> entities = modelsDir.listSync();
+      if (modelsDirectory.existsSync()) {
+        final List<FileSystemEntity> entities = modelsDirectory.listSync();
         for (final FileSystemEntity entity in entities) {
           if (entity is File && entity.path.endsWith('.gguf')) {
             modelPresent = true;
@@ -212,7 +235,7 @@ class CliBridgeService {
       }
 
       _configNotifier.value = CliConfigState(
-        targetDirectory: targetDir,
+        targetDirectory: targetDirectory,
         preferredQuality: quality,
         preferredAudio: audio,
         isModelInstalled: modelPresent,
@@ -220,8 +243,8 @@ class CliBridgeService {
       );
 
       unawaited(listIgnored());
-    } catch (e) {
-      debugPrint('[CliBridgeService] Notice loading initial config: $e');
+    } catch (exception) {
+      debugPrint('[CliBridgeService] Notice loading initial config: $exception');
     }
   }
 
@@ -234,32 +257,32 @@ class CliBridgeService {
       return;
     }
 
-    final String cliDir = resolveCliDirectory();
-    final String pythonBin = resolvePythonBinary();
-    final String mainPy = p.join(cliDir, 'main.py');
+    final String cliDirectory = resolveCliDirectory();
+    final String pythonBinary = resolvePythonBinary();
+    final String mainPythonScript = p.join(cliDirectory, 'main.py');
 
-    final List<String> args = <String>[
-      mainPy,
+    final List<String> arguments = <String>[
+      mainPythonScript,
       '--start-automation-stream',
     ];
 
     if (preferredResolution != null && preferredResolution.isNotEmpty) {
-      args.addAll(<String>[
+      arguments.addAll(<String>[
         '--preferred-resolution',
         preferredResolution.replaceAll('p', ''),
       ]);
     }
 
-    debugPrint('[CliBridgeService] Launching automation: $pythonBin ${args.join(" ")}');
+    debugPrint('[CliBridgeService] Launching automation: $pythonBinary ${arguments.join(" ")}');
 
     _isAutomationRunning = true;
     _isExecutingNotifier.value = true;
 
     try {
       final Process process = await Process.start(
-        pythonBin,
-        args,
-        workingDirectory: cliDir,
+        pythonBinary,
+        arguments,
+        workingDirectory: cliDirectory,
         runInShell: true,
       );
 
@@ -280,17 +303,17 @@ class CliBridgeService {
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen(
-            (String errLine) {
-              if (errLine.trim().isNotEmpty) {
-                debugPrint('[CliBridgeService StdErr] $errLine');
+            (String errorLine) {
+              if (errorLine.trim().isNotEmpty) {
+                debugPrint('[CliBridgeService StdErr] $errorLine');
               }
             },
           );
 
       final int exitCode = await process.exitCode;
       debugPrint('[CliBridgeService] Automation process concluded with code $exitCode');
-    } catch (e) {
-      debugPrint('[CliBridgeService] Failed to start automation process: $e');
+    } catch (exception) {
+      debugPrint('[CliBridgeService] Failed to start automation process: $exception');
     } finally {
       _activeAutomationProcess = null;
       _isAutomationRunning = false;
@@ -308,8 +331,8 @@ class CliBridgeService {
       if (decoded is Map<String, dynamic>) {
         final Map<String, Object?> map = Map<String, Object?>.from(decoded);
         final String animeName = map['string_anime_name'] as String? ?? 'Episode';
-        final int epNum = (map['int_episode_number'] as num?)?.toInt() ?? 0;
-        final String generatedId = '${animeName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_')}_ep$epNum';
+        final int episodeNumber = (map['int_episode_number'] as num?)?.toInt() ?? 0;
+        final String generatedId = '${animeName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_')}_ep$episodeNumber';
 
         final TaskItemData item = TaskItemData.fromMap(map, id: generatedId);
 
@@ -318,7 +341,7 @@ class CliBridgeService {
 
         // Update accumulated tasks list
         final List<TaskItemData> currentList = List<TaskItemData>.from(_tasksNotifier.value);
-        final int existingIndex = currentList.indexWhere((TaskItemData t) => t.id == item.id);
+        final int existingIndex = currentList.indexWhere((TaskItemData taskItem) => taskItem.id == item.id);
 
         if (existingIndex >= 0) {
           currentList[existingIndex] = item;
@@ -328,7 +351,7 @@ class CliBridgeService {
 
         _tasksNotifier.value = currentList;
       }
-    } catch (e) {
+    } catch (exception) {
       // Not JSON or plain log line
       debugPrint('[CliBridgeService Raw Log] $line');
     }
@@ -340,8 +363,8 @@ class CliBridgeService {
       try {
         debugPrint('[CliBridgeService] Terminating active automation process...');
         _activeAutomationProcess!.kill(ProcessSignal.sigkill);
-      } catch (e) {
-        debugPrint('[CliBridgeService] Error killing automation process: $e');
+      } catch (exception) {
+        debugPrint('[CliBridgeService] Error killing automation process: $exception');
       }
       _activeAutomationProcess = null;
       _isAutomationRunning = false;
@@ -355,17 +378,17 @@ class CliBridgeService {
     required void Function(String error) onError,
     required VoidCallback onComplete,
   }) async {
-    final String cliDir = resolveCliDirectory();
-    final String pythonBin = resolvePythonBinary();
-    final String mainPy = p.join(cliDir, 'main.py');
+    final String cliDirectory = resolveCliDirectory();
+    final String pythonBinary = resolvePythonBinary();
+    final String mainPythonScript = p.join(cliDirectory, 'main.py');
 
-    debugPrint('[CliBridgeService] Invoking model download: $pythonBin $mainPy --download-model');
+    debugPrint('[CliBridgeService] Invoking model download: $pythonBinary $mainPythonScript --download-model');
 
     try {
       final Process process = await Process.start(
-        pythonBin,
-        <String>[mainPy, '--download-model'],
-        workingDirectory: cliDir,
+        pythonBinary,
+        <String>[mainPythonScript, '--download-model'],
+        workingDirectory: cliDirectory,
         runInShell: true,
       );
 
@@ -379,12 +402,12 @@ class CliBridgeService {
             debugPrint('[Model Download] $trimmed');
 
             // Match progress patterns like "[Download: 45.2%]" or "45%"
-            final RegExp pctRegex = RegExp(r'(\d+(?:\.\d+)?)\s*%');
-            final Match? match = pctRegex.firstMatch(trimmed);
+            final RegExp percentageRegex = RegExp(r'(\d+(?:\.\d+)?)\s*%');
+            final Match? match = percentageRegex.firstMatch(trimmed);
             if (match != null) {
-              final double? pct = double.tryParse(match.group(1) ?? '');
-              if (pct != null) {
-                onProgress((pct / 100.0).clamp(0.0, 1.0));
+              final double? percentage = double.tryParse(match.group(1) ?? '');
+              if (percentage != null) {
+                onProgress((percentage / 100.0).clamp(0.0, 1.0));
               }
             } else if (trimmed.startsWith('PROGRESS:')) {
               final List<String> parts = trimmed.split(':');
@@ -398,8 +421,8 @@ class CliBridgeService {
       process.stderr
           .transform(utf8.decoder)
           .transform(const LineSplitter())
-          .listen((String errLine) {
-            if (errLine.trim().isNotEmpty) onError(errLine.trim());
+          .listen((String errorLine) {
+            if (errorLine.trim().isNotEmpty) onError(errorLine.trim());
           });
 
       final int exitCode = await process.exitCode;
@@ -412,9 +435,9 @@ class CliBridgeService {
       } else {
         onError('Model download failed with exit code $exitCode');
       }
-    } catch (e) {
+    } catch (exception) {
       _activeModelProcess = null;
-      onError(e.toString());
+      onError(exception.toString());
     }
   }
 
@@ -423,7 +446,9 @@ class CliBridgeService {
     if (_activeModelProcess != null) {
       try {
         _activeModelProcess!.kill(ProcessSignal.sigkill);
-      } catch (_) {}
+      } catch (exception) {
+        debugPrint('Notice killing model download process: $exception');
+      }
       _activeModelProcess = null;
     }
   }
@@ -533,10 +558,10 @@ class CliBridgeService {
     if (!activeDays.contains(currentDay)) return;
 
     final int hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
-    final String hourStr = hour.toString().padLeft(2, '0');
-    final String minStr = now.minute.toString().padLeft(2, '0');
+    final String hourString = hour.toString().padLeft(2, '0');
+    final String minuteString = now.minute.toString().padLeft(2, '0');
     final String period = now.hour >= 12 ? 'PM' : 'AM';
-    final String currentTimeFormatted = '$hourStr:$minStr $period';
+    final String currentTimeFormatted = '$hourString:$minuteString $period';
 
     for (final String targetTime in triggerTimes) {
       if (currentTimeFormatted.toUpperCase() == targetTime.trim().toUpperCase()) {
@@ -558,26 +583,26 @@ class CliBridgeService {
   }
 
   /// Helper to execute a quick CLI configuration command.
-  Future<ProcessResult?> _executeCliConfigCommand(List<String> args) async {
+  Future<ProcessResult?> _executeCliConfigCommand(List<String> arguments) async {
     try {
-      final String cliDir = resolveCliDirectory();
-      final String pythonBin = resolvePythonBinary();
-      final String mainPy = p.join(cliDir, 'main.py');
+      final String cliDirectory = resolveCliDirectory();
+      final String pythonBinary = resolvePythonBinary();
+      final String mainPythonScript = p.join(cliDirectory, 'main.py');
 
-      final List<String> fullArgs = <String>[mainPy, ...args];
-      debugPrint('[CliBridgeService Config] Executing: $pythonBin ${fullArgs.join(" ")}');
+      final List<String> fullArguments = <String>[mainPythonScript, ...arguments];
+      debugPrint('[CliBridgeService Config] Executing: $pythonBinary ${fullArguments.join(" ")}');
 
       final ProcessResult result = await Process.run(
-        pythonBin,
-        fullArgs,
-        workingDirectory: cliDir,
+        pythonBinary,
+        fullArguments,
+        workingDirectory: cliDirectory,
         runInShell: true,
       );
 
       debugPrint('[CliBridgeService Config Result] Exit: ${result.exitCode} | Out: ${result.stdout}');
       return result;
-    } catch (e) {
-      debugPrint('[CliBridgeService Config Error] $e');
+    } catch (exception) {
+      debugPrint('[CliBridgeService Config Error] $exception');
       return null;
     }
   }
