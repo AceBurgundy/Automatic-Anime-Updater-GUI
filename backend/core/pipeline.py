@@ -22,6 +22,7 @@ from config import (
     REQUEST_DELAY_SECONDS,
     MODELS_DIR,
     MODEL_PATH,
+    STALL_TIMEOUT_SECONDS,
     db_manager,
     setup_logging,
 )
@@ -502,36 +503,66 @@ async def _async_pipeline(
                             episode_num=ep_num,
                             filename=final_filename,
                             status="in-progress",
-                            progress_percentage=0.0
+                            progress_percentage=0.0,
                         )
 
-                    dl_success = False
-                    dl_error = ""
-                    max_dl_attempts = 3
+                    def on_download_progress(
+                        progress_percentage: float,
+                        downloaded_bytes: int,
+                        total_bytes: int,
+                        speed_mbps: float,
+                    ) -> None:
+                        """
+                        Relay real-time chunk streaming progress to the stream event bus.
+
+                        Parameters
+                        ----------
+                        progress_percentage : float
+                            Completion percentage (0.0 to 100.0).
+                        downloaded_bytes : int
+                            Total bytes transferred so far.
+                        total_bytes : int
+                            Total stream length in bytes.
+                        speed_mbps : float
+                            Current transfer rate in megabytes per second.
+                        """
+                        if stream_events:
+                            emit_stream_event(
+                                anime_name=folder_name,
+                                episode_num=ep_num,
+                                filename=final_filename,
+                                status="in-progress",
+                                progress_percentage=progress_percentage,
+                                downloaded_bytes=downloaded_bytes,
+                                total_bytes=total_bytes,
+                                speed_mbps=speed_mbps,
+                            )
+
+                    dl_success: bool = False
+                    dl_error: str = ""
+                    max_dl_attempts: int = 3
                     for dl_attempt in range(1, max_dl_attempts + 1):
                         try:
-                            dl_success = await asyncio_wait_for(
-                                scraper.download_episode_to_temp(
-                                    anime_title=folder_name,
-                                    episode_num=ep_num,
-                                    play_url=play_url,
-                                    temp_target_file=temp_path,
-                                    preferred_resolution=preferred_resolution
-                                ),
-                                timeout=300.0
+                            dl_success = await scraper.download_episode_to_temp(
+                                anime_title=folder_name,
+                                episode_num=ep_num,
+                                play_url=play_url,
+                                temp_target_file=temp_path,
+                                preferred_resolution=preferred_resolution,
+                                progress_callback=on_download_progress,
+                                stall_timeout=float(STALL_TIMEOUT_SECONDS),
                             )
-                        except AsyncTimeoutError:
-                            dl_error = "Download timed out (300s)"
-                            dl_success = False
-                        except Exception as err:
-                            dl_error = str(err)
+                            if not dl_success:
+                                dl_error = "Stream resolution or transfer failed"
+                        except Exception as error:
+                            dl_error = str(error)
                             dl_success = False
 
                         if dl_success and temp_path.exists():
                             break
 
                         if dl_attempt < max_dl_attempts:
-                            retry_delay = 5 * dl_attempt
+                            retry_delay: int = 5 * dl_attempt
                             logger.warning(
                                 f"Download attempt {dl_attempt}/{max_dl_attempts} failed for '{folder_name}' Ep {ep_num} ({dl_error or 'Stream resolution failed'}). "
                                 f"Cooling down {retry_delay}s before retrying..."
