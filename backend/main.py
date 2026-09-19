@@ -38,14 +38,14 @@ def update_env_variable(key: str, value: str) -> None:
 
     if env_file.exists():
         with open(env_file, "r", encoding="utf-8") as file_handle:
-            lines = file_handle.readlines()
+            lines: List[str] = file_handle.readlines()
 
     new_lines: List[str] = []
     for line in lines:
         stripped_line: str = line.strip()
         if stripped_line.startswith(f"{key}=") or stripped_line.startswith(f"#{key}="):
             new_lines.append(f"{key}={value}\n")
-            found = True
+            found: bool = True
         else:
             new_lines.append(line)
 
@@ -334,7 +334,7 @@ def main() -> int:
     if args.set_target_directory:
         target_path: Path = Path(args.set_target_directory).resolve()
         update_env_variable("TARGET_DIR", str(target_path))
-        config_action_taken = True
+        config_action_taken: bool = True
 
     if args.set_audio_preference:
         preference: str = args.set_audio_preference.strip().lower()
@@ -345,7 +345,7 @@ def main() -> int:
                 f"[ERROR] Invalid audio preference '{preference}'. Must be one of: {', '.join(VALID_AUDIO_PREFERENCES)}"
             )
             return 1
-        config_action_taken = True
+        config_action_taken: bool = True
 
     if args.set_preferred_resolution:
         resolution_value: str = (
@@ -358,7 +358,7 @@ def main() -> int:
                 f"[ERROR] Invalid preferred resolution '{resolution_value}'. Must be one of: {', '.join(VALID_RESOLUTIONS)}"
             )
             return 1
-        config_action_taken = True
+        config_action_taken: bool = True
 
     if args.download_model:
         success: bool = model_manager.download_model(show_progress=True)
@@ -444,7 +444,7 @@ def main() -> int:
 
     # Default to running automation if not explicitly passed but other execution flags are
     if not is_auto:
-        is_auto = True
+        is_auto: bool = True
 
     selected_resolution: str = (
         args.preferred_resolution.strip().lower().rstrip("p")
@@ -452,14 +452,14 @@ def main() -> int:
         else PREFERRED_RESOLUTION
     )
     if selected_resolution not in VALID_RESOLUTIONS:
-        selected_resolution = PREFERRED_RESOLUTION
+        selected_resolution: str = PREFERRED_RESOLUTION
 
     # Parse items passed via --ignore (CLI)
     cli_ignored: List[str] = []
     if args.ignore_items is not None:
         for item in args.ignore_items:
             for sub_token in str(item).split(","):
-                cleaned_token = sub_token.strip().strip("'\"").strip()
+                cleaned_token: str = sub_token.strip().strip("'\"").strip()
                 if cleaned_token:
                     cli_ignored.append(cleaned_token)
 

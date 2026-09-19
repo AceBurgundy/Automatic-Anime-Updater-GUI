@@ -203,16 +203,16 @@ async def _async_pipeline(
 
     # Step 3: Scan Local Anime Collection with ignored filters
     # Combine DB ignored items and CLI ignored items
-    db_ignored = db_manager.get_ignored_items()
-    effective_ignored = list(dict.fromkeys(db_ignored + (ignored or [])))
+    db_ignored: List[str] = db_manager.get_ignored_items()
+    effective_ignored: List[str] = list(dict.fromkeys(db_ignored + (ignored or [])))
 
     if not stream_events:
         logger.info(f"[Step 3/4] Scanning local unwatched anime collection in: {TARGET_DIR}")
-    scanner = LocalScanner(TARGET_DIR, ignored=effective_ignored)
-    local_folders = scanner.scan_unwatched()
+    scanner: LocalScanner = LocalScanner(TARGET_DIR, ignored=effective_ignored)
+    local_folders: List[AnimeFolder] = scanner.scan_unwatched()
 
     if folder_limit is not None and folder_limit > 0:
-        local_folders = local_folders[:folder_limit]
+        local_folders: List[AnimeFolder] = local_folders[:folder_limit]
         if not stream_events:
             logger.info(f"[--limit] Limiting scan to first {len(local_folders)} anime directories.")
 
@@ -220,16 +220,16 @@ async def _async_pipeline(
         logger.info(f"Found {len(local_folders)} active local anime series directories.")
 
     # Initialize components
-    ai_helper = AIHelper()
-    downloader = ResilientDownloader(temp_dir=TEMP_DIR)
-    state_manager = StateManager()
+    ai_helper: AIHelper = AIHelper()
+    downloader: ResilientDownloader = ResilientDownloader(temp_dir=TEMP_DIR)
+    state_manager: StateManager = StateManager()
 
     # Default behavior: episodes strictly follow parent folder names (<Folder Name> <01>.<ext>)
-    use_folder_as_title = db_manager.get_bool_setting("folder_as_title", default=True)
+    use_folder_as_title: bool = db_manager.get_bool_setting("folder_as_title", default=True)
 
-    total_downloads_completed = 0
-    consecutive_dl_failures = 0
-    consecutive_catalog_failures = 0
+    total_downloads_completed: int = 0
+    consecutive_download_failures: int = 0
+    consecutive_catalog_failures: int = 0
     error_reporter.clear()
 
     # Step 4: Iterative Per-Series Automation Loop
@@ -245,11 +245,11 @@ async def _async_pipeline(
     ) as scraper:
         await scraper.find_active_mirror()
 
-        for idx, folder_obj in enumerate(local_folders, start=1):
-            folder_name = folder_obj.name
-            folder_path = folder_obj.path
-            existing_eps = folder_obj.episode_numbers
-            existing_files = [f.name for f in folder_obj.video_files]
+        for series_index, folder_obj in enumerate(local_folders, start=1):
+            folder_name: str = folder_obj.name
+            folder_path: Path = folder_obj.path
+            existing_episodes: Set[int] = folder_obj.episode_numbers
+            existing_files: List[str] = [video_file.name for video_file in folder_obj.video_files]
 
             # Check download cap
             if maximum_downloads is not None and total_downloads_completed >= maximum_downloads:
@@ -258,20 +258,21 @@ async def _async_pipeline(
                 break
 
             # 1. Lookup in SQLite Series Cache
-            cached = db_manager.get_series_by_folder_path(folder_path)
-            site_title = cached.get("site_title") if cached else None
-            site_session = cached.get("site_session") if cached else None
-            series_id = cached.get("id") if cached else None
+            cached: Optional[Dict[str, Any]] = db_manager.get_series_by_folder_path(folder_path)
+            site_title: Optional[str] = cached.get("site_title") if cached else None
+            site_session: Optional[str] = cached.get("site_session") if cached else None
+            series_id: Optional[int] = cached.get("id") if cached else None
 
             # 2. First-time lookup: Multi-Tier Search & Candidate Ranking
             if not site_session:
                 if not stream_events:
-                    logger.info(f"[{idx}/{len(local_folders)}] Resolving series mapping for: '{folder_name}'...")
+                    logger.info(f"[{series_index}/{len(local_folders)}] Resolving series mapping for: '{folder_name}'...")
                 
+                candidates: List[Dict[str, Any]]
                 try:
-                    candidates = await asyncio_wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
+                    candidates: List[Dict[str, Any]] = await asyncio_wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
                 except AsyncTimeoutError:
-                    candidates = []
+                    candidates: List[Dict[str, Any]] = []
                     logger.warning(f"Search timed out (25s) for '{folder_name}'")
 
                 if not candidates:
@@ -283,25 +284,29 @@ async def _async_pipeline(
                         base_url=scraper.active_base_url
                     )
                     _render_series_box(
-                        index=idx,
+                        index=series_index,
                         total=len(local_folders),
                         folder_name=folder_name,
                         site_title="Not Found on Animepahe",
-                        local_count=len(existing_eps),
+                        local_count=len(existing_episodes),
                         available_count=0,
                         missing_count=0,
                         status_note="[!] No search results found (Logged to errors.html)"
                     )
                     continue
 
-                best_cand, best_score, closest_cand, closest_score = ai_helper.rank_and_score_candidates(
+                best_candidate: Optional[Dict[str, Any]]
+                best_score: float
+                closest_candidate: Optional[Dict[str, Any]]
+                closest_score: float
+                best_candidate, best_score, closest_candidate, closest_score = ai_helper.rank_and_score_candidates(
                     folder_title=folder_name,
                     candidates=candidates,
                     threshold=0.75
                 )
 
-                if not best_cand:
-                    closest_title = closest_cand.get("title", "") if closest_cand else "None"
+                if not best_candidate:
+                    closest_title: str = closest_candidate.get("title", "") if closest_candidate else "None"
                     error_reporter.add_title_mismatch_error(
                         folder_name=folder_name,
                         search_query=folder_name,
@@ -310,11 +315,11 @@ async def _async_pipeline(
                         base_url=scraper.active_base_url
                     )
                     _render_series_box(
-                        index=idx,
+                        index=series_index,
                         total=len(local_folders),
                         folder_name=folder_name,
                         site_title=f"Closest: \"{closest_title}\" ({int(closest_score*100)}%)",
-                        local_count=len(existing_eps),
+                        local_count=len(existing_episodes),
                         available_count=0,
                         missing_count=0,
                         status_note="[!] Title mismatch threshold not met (Logged to errors.html)"
@@ -322,9 +327,9 @@ async def _async_pipeline(
                     continue
 
                 # Match resolved! Persist mapping to SQLite
-                site_title = best_cand.get("title", "").strip()
-                site_session = best_cand.get("session", "").strip()
-                series_id = db_manager.upsert_series(
+                site_title: Optional[str] = best_candidate.get("title", "").strip()
+                site_session: Optional[str] = best_candidate.get("session", "").strip()
+                series_id: Optional[int] = db_manager.upsert_series(
                     folder_path=folder_path,
                     folder_name=folder_name,
                     site_title=site_title,
@@ -332,20 +337,20 @@ async def _async_pipeline(
                 )
 
             # 3. Fetch Available Release Catalog
-            play_url_target = f"{scraper.active_base_url}/play/{site_session}"
+            play_url_target: str = f"{scraper.active_base_url}/play/{site_session}"
             catalog_episodes: Dict[int, str] = {}
-            fetch_error = False
+            fetch_error: bool = False
             try:
                 _, catalog_episodes = await asyncio_wait_for(scraper.get_show_episodes(play_url_target), timeout=45.0)
-            except Exception as e:
-                fetch_error = True
-                logger.warning(f"Could not retrieve catalog for '{folder_name}': {e}")
+            except Exception as catalog_error:
+                fetch_error: bool = True
+                logger.warning(f"Could not retrieve catalog for '{folder_name}': {catalog_error}")
 
             if fetch_error:
                 consecutive_catalog_failures += 1
                 # Cloudflare Circuit Breaker: If 2+ consecutive series fail catalog retrieval
                 if consecutive_catalog_failures >= 2:
-                    cooldown_sec = 30
+                    cooldown_sec: int = 30
                     logger.warning(
                         f"Detected {consecutive_catalog_failures} consecutive catalog retrieval failures. "
                         f"Engaging Cloudflare circuit breaker: cooling down {cooldown_sec}s, purging session context, and rotating mirror..."
@@ -364,28 +369,28 @@ async def _async_pipeline(
                     await scraper._reset_browser_context()
                     await scraper.rotate_mirror()
                     await asyncio_sleep(cooldown_sec)
-                    consecutive_catalog_failures = 0
+                    consecutive_catalog_failures: int = 0
 
                     # Retry catalog retrieval for this series on the newly rotated mirror
-                    play_url_target = f"{scraper.active_base_url}/play/{site_session}"
+                    play_url_target: str = f"{scraper.active_base_url}/play/{site_session}"
                     try:
                         logger.info(f"Retrying catalog retrieval for '{folder_name}' on rotated mirror: {scraper.active_base_url}")
                         _, catalog_episodes = await asyncio_wait_for(scraper.get_show_episodes(play_url_target), timeout=45.0)
-                        fetch_error = False
+                        fetch_error: bool = False
                     except Exception as retry_err:
                         logger.warning(f"Retry on rotated mirror failed for '{folder_name}': {retry_err}")
 
-            if not fetch_error and not catalog_episodes and len(existing_eps) > 0:
+            if not fetch_error and not catalog_episodes and len(existing_episodes) > 0:
                 logger.info(
-                    f"Series '{folder_name}' has {len(existing_eps)} local episode(s) but "
+                    f"Series '{folder_name}' has {len(existing_episodes)} local episode(s) but "
                     f"catalog returned 0 releases for session '{site_session}'. "
                     f"Probing Animepahe for updated session..."
                 )
                 recovery_candidates: List[Dict[str, Any]]
                 try:
-                    recovery_candidates = await asyncio_wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
+                    recovery_candidates: List[Dict[str, Any]] = await asyncio_wait_for(scraper.search_anime_title(folder_name), timeout=25.0)
                 except AsyncTimeoutError:
-                    recovery_candidates = []
+                    recovery_candidates: List[Dict[str, Any]] = []
 
                 if recovery_candidates:
                     recovery_best_candidate: Optional[Dict[str, Any]]
@@ -397,7 +402,7 @@ async def _async_pipeline(
                     )
                     if recovery_best_candidate and recovery_best_candidate.get("session"):
                         candidate_session: str = str(recovery_best_candidate.get("session", "")).strip()
-                        candidate_title: str = str(recovery_best_candidate.get("title", "")).strip() or site_title
+                        candidate_title: str = str(recovery_best_candidate.get("title", "")).strip() or (site_title or "")
                         # Always re-probe with the best candidate — even if the session is the same,
                         # a live attempt may succeed (transient 404 / stale session recovery).
                         probe_url: str = f"{scraper.active_base_url}/play/{candidate_session}"
@@ -418,9 +423,9 @@ async def _async_pipeline(
                                 f"'{site_session}' -> '{candidate_session}' — "
                                 f"{len(probe_episodes)} episode(s) now available."
                             )
-                            site_session = candidate_session
-                            site_title = candidate_title
-                            catalog_episodes = probe_episodes
+                            site_session: Optional[str] = candidate_session
+                            site_title: Optional[str] = candidate_title
+                            catalog_episodes: Dict[int, str] = probe_episodes
                             db_manager.upsert_series(
                                 folder_path=folder_path,
                                 folder_name=folder_name,
@@ -433,9 +438,11 @@ async def _async_pipeline(
                                 f"(candidate session: '{candidate_session}'). Skipping this run."
                             )
 
+            missing_episodes: List[int]
+            status_note: str
             if fetch_error:
-                missing_eps = []
-                status_note = "[!] Catalog Fetch Failed (Logged to errors.html)"
+                missing_episodes: List[int] = []
+                status_note: str = "[!] Catalog Fetch Failed (Logged to errors.html)"
                 error_reporter.add_generic_error(
                     folder_name=folder_name,
                     error_type="catalog_fetch_error",
@@ -444,47 +451,48 @@ async def _async_pipeline(
                     base_url=scraper.active_base_url
                 )
             elif not catalog_episodes:
-                consecutive_catalog_failures = 0
-                missing_eps = []
-                status_note = "[OK] 0 Available Episodes (Upcoming / None Released)"
+                consecutive_catalog_failures: int = 0
+                missing_episodes: List[int] = []
+                status_note: str = "[OK] 0 Available Episodes (Upcoming / None Released)"
             else:
-                consecutive_catalog_failures = 0
-                missing_eps = [ep for ep in sorted(catalog_episodes.keys()) if ep not in existing_eps]
-                status_note = "[OK] Fully Synchronized" if not missing_eps else f"Queued {len(missing_eps)} missing episode(s)"
+                consecutive_catalog_failures: int = 0
+                missing_episodes: List[int] = [episode_key for episode_key in sorted(catalog_episodes.keys()) if episode_key not in existing_episodes]
+                status_note: str = "[OK] Fully Synchronized" if not missing_episodes else f"Queued {len(missing_episodes)} missing episode(s)"
 
             if not stream_events:
                 _render_series_box(
-                    index=idx,
+                    index=series_index,
                     total=len(local_folders),
                     folder_name=folder_name,
                     site_title=site_title or folder_name,
-                    local_count=len(existing_eps),
+                    local_count=len(existing_episodes),
                     available_count=len(catalog_episodes),
-                    missing_count=len(missing_eps),
+                    missing_count=len(missing_episodes),
                     status_note=status_note
                 )
 
             # 4. Download Missing Episodes for This Series
-            if start_automation and missing_eps:
-                for ep_num in missing_eps:
+            if start_automation and missing_episodes:
+                for episode_number in missing_episodes:
                     if maximum_downloads is not None and total_downloads_completed >= maximum_downloads:
                         break
 
-                    play_url = catalog_episodes[ep_num]
+                    play_url: str = catalog_episodes[episode_number]
 
+                    final_filename: str
                     # Deterministic vs Legacy Filename Formatting
                     if use_folder_as_title:
-                        final_filename = ai_helper.format_folder_indexed_filename(
+                        final_filename: str = ai_helper.format_folder_indexed_filename(
                             anime_folder_name=folder_name,
-                            episode_num=ep_num,
+                            episode_num=episode_number,
                             downloaded_ext=".mp4",
                             existing_filenames=existing_files
                         )
                     else:
-                        final_filename = ai_helper.format_sequential_filename(
+                        final_filename: str = ai_helper.format_sequential_filename(
                             anime_folder_name=folder_name,
                             existing_filenames=existing_files,
-                            episode_num=ep_num,
+                            episode_num=episode_number,
                             downloaded_ext=".mp4"
                         )
 
@@ -494,13 +502,13 @@ async def _async_pipeline(
                         total_downloads_completed += 1
                         continue
 
-                    print(f"   ⬇ Downloading Ep {ep_num}: \"{final_filename}\"...")
-                    temp_path = downloader.get_temp_path(final_filename)
+                    print(f"   ⬇ Downloading Ep {episode_number}: \"{final_filename}\"...")
+                    temp_path: Path = downloader.get_temp_path(final_filename)
 
                     if stream_events:
                         emit_stream_event(
                             anime_name=folder_name,
-                            episode_num=ep_num,
+                            episode_num=episode_number,
                             filename=final_filename,
                             status="in-progress",
                             progress_percentage=0.0,
@@ -525,11 +533,15 @@ async def _async_pipeline(
                             Total stream length in bytes.
                         speed_mbps : float
                             Current transfer rate in megabytes per second.
+
+                        Returns
+                        -------
+                        None
                         """
                         if stream_events:
                             emit_stream_event(
                                 anime_name=folder_name,
-                                episode_num=ep_num,
+                                episode_num=episode_number,
                                 filename=final_filename,
                                 status="in-progress",
                                 progress_percentage=progress_percentage,
@@ -538,59 +550,59 @@ async def _async_pipeline(
                                 speed_mbps=speed_mbps,
                             )
 
-                    dl_success: bool = False
-                    dl_error: str = ""
-                    max_dl_attempts: int = 3
-                    for dl_attempt in range(1, max_dl_attempts + 1):
+                    download_success: bool = False
+                    download_error: str = ""
+                    max_download_attempts: int = 3
+                    for download_attempt in range(1, max_download_attempts + 1):
                         try:
-                            dl_success = await scraper.download_episode_to_temp(
+                            download_success: bool = await scraper.download_episode_to_temp(
                                 anime_title=folder_name,
-                                episode_num=ep_num,
+                                episode_num=episode_number,
                                 play_url=play_url,
                                 temp_target_file=temp_path,
                                 preferred_resolution=preferred_resolution,
                                 progress_callback=on_download_progress,
                                 stall_timeout=float(STALL_TIMEOUT_SECONDS),
                             )
-                            if not dl_success:
-                                dl_error = "Stream resolution or transfer failed"
+                            if not download_success:
+                                download_error: str = "Stream resolution or transfer failed"
                         except Exception as error:
-                            dl_error = str(error)
-                            dl_success = False
+                            download_error: str = str(error)
+                            download_success: bool = False
 
-                        if dl_success and temp_path.exists():
+                        if download_success and temp_path.exists():
                             break
 
-                        if dl_attempt < max_dl_attempts:
-                            retry_delay: int = 5 * dl_attempt
+                        if download_attempt < max_download_attempts:
+                            retry_delay: int = 5 * download_attempt
                             logger.warning(
-                                f"Download attempt {dl_attempt}/{max_dl_attempts} failed for '{folder_name}' Ep {ep_num} ({dl_error or 'Stream resolution failed'}). "
+                                f"Download attempt {download_attempt}/{max_download_attempts} failed for '{folder_name}' Ep {episode_number} ({download_error or 'Stream resolution failed'}). "
                                 f"Cooling down {retry_delay}s before retrying..."
                             )
                             if not stream_events:
-                                print(f"   [!] Attempt {dl_attempt} failed ({dl_error or 'Stream resolution failed'}). Retrying in {retry_delay}s...")
+                                print(f"   [!] Attempt {download_attempt} failed ({download_error or 'Stream resolution failed'}). Retrying in {retry_delay}s...")
                             await scraper._reset_page()
                             await asyncio_sleep(retry_delay)
 
-                    if dl_success and temp_path.exists():
-                        consecutive_dl_failures = 0
-                        move_success = downloader.move_temp_to_target(temp_path, folder_path, final_filename)
+                    if download_success and temp_path.exists():
+                        consecutive_download_failures: int = 0
+                        move_success: bool = downloader.move_temp_to_target(temp_path, folder_path, final_filename)
                         if move_success:
                             total_downloads_completed += 1
                             db_manager.record_downloaded_episode(
                                 series_id=series_id,
-                                episode_number=ep_num,
+                                episode_number=episode_number,
                                 filename=final_filename,
                                 resolution=preferred_resolution,
                                 audio=AUDIO_PREFERENCE
                             )
-                            state_manager.record_downloaded_episode(folder_name, ep_num, final_filename)
+                            state_manager.record_downloaded_episode(folder_name, episode_number, final_filename)
                             print(f"   ✓ Saved: \"{final_filename}\"")
                             if stream_events:
-                                file_size = (folder_path / final_filename).stat().st_size
+                                file_size: int = (folder_path / final_filename).stat().st_size
                                 emit_stream_event(
                                     anime_name=folder_name,
-                                    episode_num=ep_num,
+                                    episode_num=episode_number,
                                     filename=final_filename,
                                     status="completed",
                                     progress_percentage=100.0,
@@ -606,22 +618,22 @@ async def _async_pipeline(
                             error_reporter.add_generic_error(
                                 folder_name=folder_name,
                                 error_type="move_failed",
-                                message=f"Failed to move episode {ep_num} into folder under SafetyGuard validation."
+                                message=f"Failed to move episode {episode_number} into folder under SafetyGuard validation."
                             )
                     else:
-                        consecutive_dl_failures += 1
+                        consecutive_download_failures += 1
                         error_reporter.add_generic_error(
                             folder_name=folder_name,
                             error_type="download_failed",
-                            message=f"Failed to download episode {ep_num}: {dl_error or 'Stream resolution failed'}"
+                            message=f"Failed to download episode {episode_number}: {download_error or 'Stream resolution failed'}"
                         )
-                        print(f"   ✗ Download failed for Ep {ep_num}: {dl_error or 'Stream resolution failed'}")
+                        print(f"   ✗ Download failed for Ep {episode_number}: {download_error or 'Stream resolution failed'}")
 
                         # If 2 or more consecutive episodes fail, trigger safety cooldown, session reset, and mirror rotation
-                        if consecutive_dl_failures >= 2:
-                            cooldown_sec = 25
+                        if consecutive_download_failures >= 2:
+                            cooldown_sec: int = 25
                             logger.warning(
-                                f"Detected {consecutive_dl_failures} consecutive download failures. "
+                                f"Detected {consecutive_download_failures} consecutive download failures. "
                                 f"Engaging safety cooldown for {cooldown_sec}s, resetting session, and rotating mirror..."
                             )
                             if not stream_events:
@@ -629,7 +641,7 @@ async def _async_pipeline(
                             await scraper._reset_browser_context()
                             await scraper.rotate_mirror()
                             await asyncio_sleep(cooldown_sec)
-                            consecutive_dl_failures = 0
+                            consecutive_download_failures: int = 0
 
                     # Inter-download throttle
                     if REQUEST_DELAY_SECONDS > 0:
