@@ -8,6 +8,7 @@ from typing import Dict, Optional
 from httpx import Client as HttpClient, Response as HttpResponse, Timeout as HttpTimeout
 
 from config import TEMP_DIR
+from constants import DEFAULT_STALL_TIMEOUT_SECONDS
 from core.safety import SafetyViolationError, safety_guard
 
 logger: Logger = getLogger("anime_refresher.downloader")
@@ -121,12 +122,12 @@ class ResilientDownloader:
         final_filename: str,
         headers: Optional[Dict[str, str]] = None,
         cookies: Optional[Dict[str, str]] = None,
-        timeout_seconds: float = 300.0,
+        timeout_seconds: Optional[float] = None,
+        stall_timeout: float = float(DEFAULT_STALL_TIMEOUT_SECONDS),
     ) -> bool:
         """
-        Stream a video file into temp directory and move it to target_dir upon completion.
+        Download a media stream chunk-by-chunk directly into a temporary file.
 
-        Cleans up partial files on any failure or timeout.
         Ensures existing files are never overwritten or modified via SafetyGuard.
 
         Parameters
@@ -141,8 +142,10 @@ class ResilientDownloader:
             Custom HTTP request headers.
         cookies : Optional[Dict[str, str]], default=None
             Session cookies for the media server.
-        timeout_seconds : float, default=300.0
-            Maximum total read/transfer timeout in seconds.
+        timeout_seconds : Optional[float], default=None
+            Optional maximum total read/transfer timeout in seconds (None disables wall-clock limit).
+        stall_timeout : float, default=DEFAULT_STALL_TIMEOUT_SECONDS
+            Maximum duration in seconds to wait for subsequent chunk packets before aborting.
 
         Returns
         -------
@@ -184,7 +187,11 @@ class ResilientDownloader:
                 logger.debug(f"Removing leftover partial file: {temp_file}")
                 temp_file.unlink()
 
-            client_timeout: HttpTimeout = HttpTimeout(timeout_seconds, connect=20.0, read=30.0)
+            client_timeout: HttpTimeout = HttpTimeout(
+                timeout_seconds,
+                connect=20.0,
+                read=stall_timeout,
+            )
             start_time: float = current_timestamp()
 
             with HttpClient(
