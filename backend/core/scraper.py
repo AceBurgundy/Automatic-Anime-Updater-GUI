@@ -12,19 +12,28 @@ from httpx import AsyncClient as HttpAsyncClient, Timeout as HttpTimeout
 
 
 from thefuzz import fuzz
-from playwright.async_api import async_playwright, Page, BrowserContext, Browser, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import (
+    Browser,
+    BrowserContext,
+    Download,
+    ElementHandle,
+    Locator,
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+    async_playwright,
+)
 
 try:
     from camoufox.async_api import AsyncCamoufox
-    CAMOUFOX_AVAILABLE = True
+    CAMOUFOX_AVAILABLE: bool = True
 except ImportError:
-    CAMOUFOX_AVAILABLE = False
+    CAMOUFOX_AVAILABLE: bool = False
 
 try:
     from playwright_stealth import Stealth
-    STEALTH_AVAILABLE = True
+    STEALTH_AVAILABLE: bool = True
 except ImportError:
-    STEALTH_AVAILABLE = False
+    STEALTH_AVAILABLE: bool = False
 
 from config import (
     BASE_URLS,
@@ -57,12 +66,65 @@ class DownloadStalledError(Exception):
 
 @dataclass
 class AnimepaheItem:
+    """
+    Data container representing an individual episode catalog item on Animepahe.
+
+    Attributes
+    ----------
+    title : str
+        Episode title or show name.
+    episode_num : int
+        Parsed episode sequence number.
+    play_url : str
+        Direct streaming or episode page URL.
+    anime_session : str, default=""
+        Unique anime series identifier token.
+    """
+
     title: str
     episode_num: int
     play_url: str
     anime_session: str = ""
 
+
 class AnimepaheScraper:
+    """
+    Automated browser scraper and streaming resolver for Animepahe mirror catalogs.
+
+    Attributes
+    ----------
+    state_manager : StateManager
+        State manager for fallback retry tracking.
+    base_urls : List[str]
+        List of mirror base URLs.
+    headless : bool
+        Whether the browser engine runs headlessly.
+    browser_type : str
+        Underlying browser engine name ('camoufox', 'firefox', or 'chrome').
+    audio_preference : str
+        Language audio preference ('sub', 'dub', 'sub_strict', 'dub_strict').
+    preferred_resolution : Optional[str]
+        Explicit preferred resolution tier.
+    active_base_url : str
+        Currently active and responsive mirror URL.
+    ai_helper : AIHelper
+        Helper for title normalization and fuzzy matching.
+    profile_dir : Path
+        Persistent browser profile directory.
+    debug_dir : Path
+        Directory for error and diagnostic screenshots.
+    camoufox_cm : Any
+        Context manager for Camoufox engine if active.
+    playwright : Any
+        Playwright driver manager instance.
+    browser : Optional[Browser]
+        Active Playwright Browser instance.
+    context : Optional[BrowserContext]
+        Active Playwright BrowserContext instance.
+    page : Optional[Page]
+        Primary active browser Page.
+    """
+
     state_manager: StateManager
     base_urls: List[str]
     headless: bool
@@ -106,21 +168,23 @@ class AnimepaheScraper:
         preferred_resolution : Optional[str], default=None
             Explicit preferred resolution ('1080', '720', '480', '360').
         """
-        self.state_manager = state_manager
-        self.base_urls = base_urls or BASE_URLS
-        self.headless = headless
-        self.browser_type = browser_type.lower()
-        self.audio_preference = audio_preference.lower()
-        self.preferred_resolution = preferred_resolution.lower().rstrip("p") if preferred_resolution else None
-        self.active_base_url = self.base_urls[0]
-        self.ai_helper = AIHelper()
-        self.profile_dir = PROJECT_DIR / ".browser_profile"
+        self.state_manager: StateManager = state_manager
+        self.base_urls: List[str] = base_urls or BASE_URLS
+        self.headless: bool = headless
+        self.browser_type: str = browser_type.lower()
+        self.audio_preference: str = audio_preference.lower()
+        self.preferred_resolution: Optional[str] = (
+            preferred_resolution.lower().rstrip("p") if preferred_resolution else None
+        )
+        self.active_base_url: str = self.base_urls[0]
+        self.ai_helper: AIHelper = AIHelper()
+        self.profile_dir: Path = PROJECT_DIR / ".browser_profile"
         self.profile_dir.mkdir(parents=True, exist_ok=True)
-        self.debug_dir = PROJECT_DIR / "debug_screenshots"
+        self.debug_dir: Path = PROJECT_DIR / "debug_screenshots"
         self.debug_dir.mkdir(parents=True, exist_ok=True)
 
-        self.camoufox_cm = None
-        self.playwright = None
+        self.camoufox_cm: Any = None
+        self.playwright: Any = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
@@ -187,14 +251,17 @@ class AnimepaheScraper:
                 )
                 self.page = await self.context.new_page()
             else:
-                chrome_args = [
+                chrome_args: List[str] = [
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
                     "--disable-infobars",
                     "--disable-dev-shm-usage",
-                    "--window-size=1920,1080"
+                    "--window-size=1920,1080",
                 ]
-                user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+                user_agent: str = (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+                )
                 try:
                     self.context = await self.playwright.chromium.launch_persistent_context(
                         str(self.profile_dir.resolve()),
@@ -204,10 +271,10 @@ class AnimepaheScraper:
                         args=chrome_args,
                         viewport={"width": 1920, "height": 1080},
                         user_agent=user_agent,
-                        locale="en-US"
+                        locale="en-US",
                     )
-                except Exception as e:
-                    logger.debug(f"Could not launch Chrome channel ({e}). Using bundled chromium...")
+                except Exception as error:
+                    logger.debug(f"Could not launch Chrome channel ({error}). Using bundled chromium...")
                     self.context = await self.playwright.chromium.launch_persistent_context(
                         str(self.profile_dir.resolve()),
                         headless=self.headless,
@@ -215,7 +282,7 @@ class AnimepaheScraper:
                         args=chrome_args,
                         viewport={"width": 1920, "height": 1080},
                         user_agent=user_agent,
-                        locale="en-US"
+                        locale="en-US",
                     )
                 if STEALTH_AVAILABLE:
                     try:
@@ -300,7 +367,14 @@ class AnimepaheScraper:
         raise RuntimeError("Browser context is not initialized")
 
     async def _reset_page(self) -> Page:
-        """Safely resets the active page to clear in-flight navigation states."""
+        """
+        Safely resets the active page to clear in-flight navigation states.
+
+        Returns
+        -------
+        Page
+            Newly created active Playwright browser page.
+        """
         if hasattr(self, "page") and self.page:
             try:
                 if not self.page.is_closed():
@@ -314,6 +388,11 @@ class AnimepaheScraper:
         """
         Clears all cookies, storage, and in-flight tabs to completely purge
         corrupted Cloudflare challenge tokens (__cf_chl_rt_tk, etc.).
+
+        Returns
+        -------
+        Page
+            Newly created active Playwright browser page.
         """
         logger.warning("Purging browser context cookies and resetting active session...")
         if hasattr(self, "page") and self.page:
@@ -327,52 +406,120 @@ class AnimepaheScraper:
         if self.context and not self.context.is_closed():
             try:
                 await self.context.clear_cookies()
-            except Exception as e:
-                logger.debug(f"Failed to clear cookies: {e}")
+            except Exception as error:
+                logger.debug(f"Failed to clear cookies: {error}")
 
         return await self._create_page()
 
-    async def _safe_goto(self, url: str, wait_until: str = "domcontentloaded", timeout: float = 30000) -> Tuple[Page, Optional[Any]]:
-        """Safely navigates to a URL, retrying once if connection drop occurs."""
-        page = await self._create_page()
+    async def _safe_goto(
+        self,
+        url: str,
+        wait_until: str = "domcontentloaded",
+        timeout: float = 30000,
+    ) -> Tuple[Page, Optional[Any]]:
+        """
+        Safely navigates to a URL, retrying once if connection drop occurs.
+
+        Parameters
+        ----------
+        url : str
+            Target URL to navigate to.
+        wait_until : str, default "domcontentloaded"
+            Playwright navigation lifecycle wait event.
+        timeout : float, default 30000
+            Maximum navigation timeout in milliseconds.
+
+        Returns
+        -------
+        Tuple[Page, Optional[Any]]
+            Tuple of active Page instance and navigation Response if available.
+        """
+        page: Page = await self._create_page()
         try:
-            response = await page.goto(url, wait_until=wait_until, timeout=timeout)
+            response: Optional[Any] = await page.goto(url, wait_until=wait_until, timeout=timeout)
             return page, response
-        except Exception as e:
-            logger.debug(f"Navigation to {url} encountered error ({e}). Resetting page and retrying...")
-            page = await self._reset_page()
-            response = await page.goto(url, wait_until=wait_until, timeout=timeout)
+        except Exception as error:
+            logger.debug(f"Navigation to {url} encountered error ({error}). Resetting page and retrying...")
+            page: Page = await self._reset_page()
+            response: Optional[Any] = await page.goto(url, wait_until=wait_until, timeout=timeout)
             return page, response
 
-    async def jitter(self, min_sec: float = 1.0, max_sec: float = 2.5):
-        """Variable delay with realistic jitter."""
-        delay = uniform(min_sec, max_sec)
+    async def jitter(self, min_sec: float = 1.0, max_sec: float = 2.5) -> None:
+        """
+        Variable delay with realistic jitter.
+
+        Parameters
+        ----------
+        min_sec : float, default 1.0
+            Minimum delay duration in seconds.
+        max_sec : float, default 2.5
+            Maximum delay duration in seconds.
+
+        Returns
+        -------
+        None
+        """
+        delay: float = uniform(min_sec, max_sec)
         await asyncio_sleep(delay)
 
-    async def _human_mouse_move(self, page: Page, target_x: float, target_y: float, steps: int = 15):
-        """Simulates smooth mouse movement."""
+    async def _human_mouse_move(
+        self,
+        page: Page,
+        target_x: float,
+        target_y: float,
+        steps: int = 15,
+    ) -> None:
+        """
+        Simulates smooth mouse movement.
+
+        Parameters
+        ----------
+        page : Page
+            Playwright page instance.
+        target_x : float
+            Target X screen coordinate.
+        target_y : float
+            Target Y screen coordinate.
+        steps : int, default 15
+            Interpolation steps for smooth mouse motion.
+
+        Returns
+        -------
+        None
+        """
         try:
             if self.browser_type in ("firefox", "camoufox") and CAMOUFOX_AVAILABLE:
                 await page.mouse.move(target_x, target_y)
             else:
-                vp = page.viewport_size or {"width": 1920, "height": 1080}
-                cur_x = uniform(vp["width"] * 0.3, vp["width"] * 0.7)
-                cur_y = uniform(vp["height"] * 0.3, vp["height"] * 0.7)
-                for i in range(1, steps + 1):
-                    t = i / steps
-                    factor = t * t * (3 - 2 * t)
-                    x = cur_x + (target_x - cur_x) * factor + uniform(-2, 2)
-                    y = cur_y + (target_y - cur_y) * factor + uniform(-2, 2)
-                    await page.mouse.move(x, y)
+                viewport_dict: Dict[str, int] = page.viewport_size or {"width": 1920, "height": 1080}
+                current_x: float = uniform(viewport_dict["width"] * 0.3, viewport_dict["width"] * 0.7)
+                current_y: float = uniform(viewport_dict["height"] * 0.3, viewport_dict["height"] * 0.7)
+                for step_index in range(1, steps + 1):
+                    time_fraction: float = step_index / steps
+                    factor: float = time_fraction * time_fraction * (3 - 2 * time_fraction)
+                    x_coordinate: float = current_x + (target_x - current_x) * factor + uniform(-2, 2)
+                    y_coordinate: float = current_y + (target_y - current_y) * factor + uniform(-2, 2)
+                    await page.mouse.move(x_coordinate, y_coordinate)
                     await asyncio_sleep(uniform(0.015, 0.035))
                 await page.mouse.move(target_x, target_y)
         except Exception:
             pass
 
-    async def _human_scroll(self, page: Page):
-        """Simulates realistic browsing scroll behavior."""
+    async def _human_scroll(self, page: Page) -> None:
+        """
+        Simulates realistic browsing scroll behavior.
+
+        Parameters
+        ----------
+        page : Page
+            Playwright page instance.
+
+        Returns
+        -------
+        None
+        """
         try:
-            delta = randint(180, 420)
+            delta: int = randint(180, 420)
             await page.mouse.wheel(0, delta)
             await asyncio_sleep(uniform(0.2, 0.5))
             if random_float() < 0.35:
@@ -382,21 +529,38 @@ class AnimepaheScraper:
             pass
 
     async def _handle_cloudflare_if_present(self, page: Page, max_wait: int = 30) -> bool:
-        """Detects and waits for Cloudflare Turnstile / Managed challenge clearance."""
-        for sec in range(0, max_wait, 2):
-            try:
-                title = await page.title()
-                current_url = page.url
-            except Exception:
-                title = ""
-                current_url = ""
+        """
+        Detects and waits for Cloudflare Turnstile / Managed challenge clearance.
 
-            title_clean = title.strip()
+        Parameters
+        ----------
+        page : Page
+            Playwright page to monitor for challenge clearance.
+        max_wait : int, default 30
+            Maximum waiting duration in seconds.
+
+        Returns
+        -------
+        bool
+            True if challenge cleared or not present, False if timeout reached.
+        """
+        sec: int
+        for sec in range(0, max_wait, 2):
+            title: str
+            current_url: str
+            try:
+                title: str = await page.title()
+                current_url: str = page.url
+            except Exception:
+                title: str = ""
+                current_url: str = ""
+
+            title_clean: str = title.strip()
 
             # Check DOM for challenge markers
-            has_challenge_dom = False
+            has_challenge_dom: bool = False
             try:
-                has_challenge_dom = await page.evaluate('''() => {
+                has_challenge_dom: bool = await page.evaluate('''() => {
                     return Boolean(
                         document.querySelector('#challenge-stage, #cf-stage, #turnstile-wrapper, .cf-turnstile, iframe[src*="challenges.cloudflare.com"], iframe[src*="cloudflare"], #challenge-running, #challenge-error-title')
                     );
@@ -404,7 +568,7 @@ class AnimepaheScraper:
             except Exception:
                 pass
 
-            is_cf_challenge = (
+            is_cf_challenge: bool = (
                 not title_clean
                 or "Just a moment" in title
                 or "Performing security" in title
@@ -425,7 +589,7 @@ class AnimepaheScraper:
             # If not visibly in a challenge and URL has settled
             if not is_cf_challenge and not title.startswith("Loading"):
                 try:
-                    content_check = await page.evaluate('''() => {
+                    content_check: bool = await page.evaluate('''() => {
                         const hasAnimeContent = Boolean(document.querySelector('nav, .navbar, .theatre, .episode, #search, .theatre-info, .episode-wrap, #downloadMenu, #pickDownload'));
                         const hasKwikContent = Boolean(document.querySelector('form button, button[type="submit"], .button.is-success, .button.is-primary, a.button, .box, input[type="submit"]'));
                         return hasAnimeContent || hasKwikContent;
@@ -440,37 +604,37 @@ class AnimepaheScraper:
 
             # Try finding Turnstile iframe on page and clicking coordinates
             try:
-                cf_iframes = page.locator("iframe[src*='cloudflare'], iframe[src*='turnstile'], iframe[src*='challenges'], iframe[title*='Cloudflare'], iframe[title*='Turnstile']")
-                count = await cf_iframes.count()
+                cf_iframes: Locator = page.locator("iframe[src*='cloudflare'], iframe[src*='turnstile'], iframe[src*='challenges'], iframe[title*='Cloudflare'], iframe[title*='Turnstile']")
+                count: int = await cf_iframes.count()
                 if count > 0:
-                    for idx in range(count):
-                        iframe_el = cf_iframes.nth(idx)
-                        box = await iframe_el.bounding_box(timeout=1500)
-                        if box:
-                            click_x = box["x"] + min(30, box["width"] / 4)
-                            click_y = box["y"] + box["height"] / 2
+                    for iframe_index in range(count):
+                        iframe_element: Locator = cf_iframes.nth(iframe_index)
+                        bounding_box: Optional[Dict[str, float]] = await iframe_element.bounding_box(timeout=1500)
+                        if bounding_box:
+                            click_x: float = bounding_box["x"] + min(30.0, bounding_box["width"] / 4.0)
+                            click_y: float = bounding_box["y"] + bounding_box["height"] / 2.0
                             await page.mouse.click(click_x, click_y)
             except Exception:
                 pass
 
             # Check inner frame elements for Turnstile checkbox
             try:
-                for frame in page.frames:
-                    if "cloudflare" in frame.url or "turnstile" in frame.url or "challenge" in frame.url:
-                        box = await frame.query_selector("input[type='checkbox'], span.mark, .ctp-checkbox-label, #cf-stage, #challenge-stage")
-                        if box:
+                for browser_frame in page.frames:
+                    if "cloudflare" in browser_frame.url or "turnstile" in browser_frame.url or "challenge" in browser_frame.url:
+                        frame_element: Optional[ElementHandle] = await browser_frame.query_selector("input[type='checkbox'], span.mark, .ctp-checkbox-label, #cf-stage, #challenge-stage")
+                        if frame_element:
                             logger.debug("Found Cloudflare Turnstile checkbox inside frame. Clicking...")
-                            await box.click(timeout=2000)
+                            await frame_element.click(timeout=2000)
             except Exception:
                 pass
 
             await asyncio_sleep(2.0)
 
         try:
-            title = await page.title()
-            title_clean = title.strip()
-            current_url = page.url
-            is_valid = (
+            title: str = await page.title()
+            title_clean: str = title.strip()
+            current_url: str = page.url
+            is_valid: bool = (
                 title_clean != ""
                 and "Just a moment" not in title
                 and "Performing security" not in title
@@ -485,21 +649,28 @@ class AnimepaheScraper:
             return False
 
     async def find_active_mirror(self) -> str:
-        """Tests base URLs and selects the first responsive Animepahe mirror with fast failover."""
-        page = await self._create_page()
+        """
+        Tests base URLs and selects the first responsive Animepahe mirror with fast failover.
+
+        Returns
+        -------
+        str
+            Active responsive base URL for Animepahe.
+        """
+        page: Page = await self._create_page()
         for url in self.base_urls:
             try:
                 logger.info(f"Testing mirror connection: {url}...")
-                resp = await page.goto(url, wait_until="domcontentloaded", timeout=6000)
-                passed = await self._handle_cloudflare_if_present(page, max_wait=8)
+                response: Optional[Any] = await page.goto(url, wait_until="domcontentloaded", timeout=6000)
+                passed: bool = await self._handle_cloudflare_if_present(page, max_wait=8)
                 if passed:
                     self.active_base_url = url
                     logger.info(f"Selected active Animepahe mirror: {self.active_base_url}")
                     return url
                 else:
                     logger.debug(f"Mirror {url} did not clear challenge in 8s. Probing next mirror...")
-            except Exception as e:
-                logger.debug(f"Mirror {url} probe timed out or failed: {e}")
+            except Exception as error:
+                logger.debug(f"Mirror {url} probe timed out or failed: {error}")
 
         # If all mirrors are currently challenged, default immediately to the first mirror without blocking
         logger.info(f"Selected active Animepahe mirror: {self.base_urls[0]}")
@@ -510,46 +681,65 @@ class AnimepaheScraper:
         """
         Rotates to the next available mirror in base_urls, purges corrupted challenge
         state/cookies via _reset_browser_context, and probes connectivity on the new mirror.
+
+        Returns
+        -------
+        str
+            Active base URL after rotation.
         """
         if not self.base_urls:
             return self.active_base_url
 
+        current_mirror_index: int
         try:
-            cur_idx = self.base_urls.index(self.active_base_url)
+            current_mirror_index: int = self.base_urls.index(self.active_base_url)
         except ValueError:
-            cur_idx = 0
+            current_mirror_index: int = 0
 
-        next_idx = (cur_idx + 1) % len(self.base_urls)
-        old_mirror = self.active_base_url
-        self.active_base_url = self.base_urls[next_idx]
-        logger.warning(f"Mirror rotation triggered: {old_mirror} -> {self.active_base_url}")
+        next_mirror_index: int = (current_mirror_index + 1) % len(self.base_urls)
+        previous_mirror: str = self.active_base_url
+        self.active_base_url = self.base_urls[next_mirror_index]
+        logger.warning(f"Mirror rotation triggered: {previous_mirror} -> {self.active_base_url}")
 
         # Purge cookies & page context to prevent cross-mirror challenge poisoning
-        page = await self._reset_browser_context()
+        page: Page = await self._reset_browser_context()
         try:
             logger.info(f"Probing rotated mirror {self.active_base_url}...")
             page, _ = await self._safe_goto(self.active_base_url, wait_until="domcontentloaded", timeout=15000)
             await self._handle_cloudflare_if_present(page, max_wait=15)
-        except Exception as e:
-            logger.warning(f"Error during mirror switch probe to {self.active_base_url}: {e}")
+        except Exception as error:
+            logger.warning(f"Error during mirror switch probe to {self.active_base_url}: {error}")
 
         return self.active_base_url
 
     async def scrape_recent_releases(self, max_pages: int = 3) -> List[Dict[str, Any]]:
-        """Scrapes recent episode release cards across pages 1 to max_pages."""
-        page = await self._create_page()
+        """
+        Scrapes recent episode release cards across pages 1 to max_pages.
+
+        Parameters
+        ----------
+        max_pages : int, default 3
+            Maximum number of pages to scrape.
+
+        Returns
+        -------
+        list of dict of str to Any
+            List of scraped recent episode dictionaries.
+        """
+        page: Page = await self._create_page()
         releases: List[Dict[str, Any]] = []
 
         try:
+            page_num: int
             for page_num in range(1, max_pages + 1):
-                url = f"{self.active_base_url}/?page={page_num}" if page_num > 1 else self.active_base_url
+                url: str = f"{self.active_base_url}/?page={page_num}" if page_num > 1 else self.active_base_url
                 logger.info(f"Scraping recent releases (Page {page_num}/{max_pages}): {url}")
                 await page.goto(url, wait_until="commit", timeout=30000)
                 await self._handle_cloudflare_if_present(page, max_wait=35)
                 await self.jitter(1.0, 2.0)
 
                 # Strategy 1: Fetch internal airing API
-                api_items = await page.evaluate(f'''async () => {{
+                api_items: List[Dict[str, Any]] = await page.evaluate(f'''async () => {{
                     try {{
                         const res = await fetch('/api?m=airing&page={page_num}');
                         if (res.ok) {{
@@ -562,20 +752,21 @@ class AnimepaheScraper:
 
                 if api_items:
                     logger.info(f"Page {page_num}: Retrieved {len(api_items)} releases via internal API.")
-                    for item in api_items:
-                        title = item.get("anime_title") or item.get("title", "")
-                        ep_num = item.get("episode", 0)
-                        session = item.get("session", "")
-                        anime_session = item.get("anime_session", "")
+                    for release_item in api_items:
+                        title: str = release_item.get("anime_title") or release_item.get("title", "")
+                        raw_episode: Any = release_item.get("episode", 0)
+                        session: str = release_item.get("session", "")
+                        anime_session: str = release_item.get("anime_session", "")
                         
+                        play_url: str
                         if anime_session and session:
-                            play_url = urljoin(self.active_base_url, f"/play/{anime_session}/{session}")
+                            play_url: str = urljoin(self.active_base_url, f"/play/{anime_session}/{session}")
                         else:
-                            play_url = urljoin(self.active_base_url, f"/play/{session}")
+                            play_url: str = urljoin(self.active_base_url, f"/play/{session}")
 
                         releases.append({
                             "title": title.strip(),
-                            "episode_num": int(ep_num) if str(ep_num).isdigit() else 0,
+                            "episode_num": int(raw_episode) if str(raw_episode).isdigit() else 0,
                             "play_url": play_url,
                             "anime_session": anime_session
                         })
@@ -583,7 +774,7 @@ class AnimepaheScraper:
 
                 # Strategy 2: DOM fallback
                 logger.debug("Parsing DOM for latest releases...")
-                items = await page.evaluate('''() => {
+                dom_items: List[Dict[str, str]] = await page.evaluate('''() => {
                     const results = [];
                     const cards = document.querySelectorAll('.episode-wrap, .episode, .latest-release');
                     cards.forEach(card => {
@@ -606,21 +797,21 @@ class AnimepaheScraper:
                     return results;
                 }''')
 
-                for it in items:
-                    raw_title = it.get("title", "").strip()
-                    play_href = it.get("play_href", "").strip()
-                    ep_text = it.get("episode_text", "").strip()
+                for dom_item in dom_items:
+                    raw_title: str = dom_item.get("title", "").strip()
+                    play_href: str = dom_item.get("play_href", "").strip()
+                    episode_text: str = dom_item.get("episode_text", "").strip()
 
-                    ep_match = re_search(r'(\d+)', ep_text) or re_search(r'Episode\s*(\d+)', raw_title, IGNORECASE)
-                    ep_num = int(ep_match.group(1)) if ep_match else 0
+                    episode_match: Optional[Match[str]] = re_search(r'(\d+)', episode_text) or re_search(r'Episode\s*(\d+)', raw_title, IGNORECASE)
+                    episode_number: int = int(episode_match.group(1)) if episode_match else 0
 
-                    full_play_url = urljoin(self.active_base_url, play_href)
-                    anime_session_match = re_search(r'/play/([a-zA-Z0-9\-]+)/', play_href)
-                    anime_session = anime_session_match.group(1) if anime_session_match else ""
+                    full_play_url: str = urljoin(self.active_base_url, play_href)
+                    anime_session_match: Optional[Match[str]] = re_search(r'/play/([a-zA-Z0-9\-]+)/', play_href)
+                    anime_session: str = anime_session_match.group(1) if anime_session_match else ""
 
                     releases.append({
                         "title": raw_title,
-                        "episode_num": ep_num,
+                        "episode_num": episode_number,
                         "play_url": full_play_url,
                         "anime_session": anime_session
                     })
@@ -629,38 +820,68 @@ class AnimepaheScraper:
 
             logger.info(f"Total scraped releases across {max_pages} pages: {len(releases)}")
             return releases
-        except Exception as e:
-            logger.error(f"Error scraping recent releases: {e}", exc_info=True)
+        except Exception as error:
+            logger.error(f"Error scraping recent releases: {error}", exc_info=True)
             return releases
 
     def match_local_anime(self, web_title: str, local_folder_names: List[str], threshold: int = 85) -> Optional[str]:
-        """Fuzzy matching local folder names against web titles."""
-        clean_web = re_sub(r'[^\w\s]', ' ', web_title).lower()
-        best_match = None
-        best_score = 0
+        """
+        Fuzzy matching local folder names against web titles.
+
+        Parameters
+        ----------
+        web_title : str
+            Anime title from web scraper.
+        local_folder_names : list of str
+            List of local folder names to match against.
+        threshold : int, default 85
+            Fuzzy matching threshold percentage (0 to 100).
+
+        Returns
+        -------
+        str or None
+            Best matching folder name or None if below threshold.
+        """
+        clean_web: str = re_sub(r'[^\w\s]', ' ', web_title).lower()
+        best_match: Optional[str] = None
+        best_score: int = 0
 
         for local_folder in local_folder_names:
-            clean_local = re_sub(r'[^\w\s]', ' ', local_folder).lower()
-            score = fuzz.token_set_ratio(clean_web, clean_local)
+            clean_local: str = re_sub(r'[^\w\s]', ' ', local_folder).lower()
+            score: int = fuzz.token_set_ratio(clean_web, clean_local)
             if score > best_score and score >= threshold:
-                best_score = score
-                best_match = local_folder
+                best_score: int = score
+                best_match: Optional[str] = local_folder
 
         if best_match:
             logger.debug(f"Fuzzy match: '{web_title}' -> '{best_match}' (score: {best_score}/100)")
         return best_match
 
     async def _ensure_on_mirror(self, page: Page, allow_rotate: bool = True) -> bool:
-        """Ensures the page is currently navigated to the active Animepahe mirror with Cloudflare cleared."""
+        """
+        Ensures the page is currently navigated to the active Animepahe mirror with Cloudflare cleared.
+
+        Parameters
+        ----------
+        page : Page
+            Playwright page instance.
+        allow_rotate : bool, default True
+            Whether mirror rotation is permitted if blocked.
+
+        Returns
+        -------
+        bool
+            True if page is successfully on active mirror with Cloudflare cleared, False otherwise.
+        """
         try:
-            current_url = page.url or ""
-            current_title = ""
+            current_url: str = page.url or ""
+            current_title: str = ""
             try:
-                current_title = await page.title()
+                current_title: str = await page.title()
             except Exception:
                 pass
 
-            needs_nav = (
+            needs_nav: bool = (
                 not current_url
                 or current_url == "about:blank"
                 or not current_url.startswith(self.active_base_url)
@@ -673,25 +894,39 @@ class AnimepaheScraper:
             if needs_nav:
                 logger.debug(f"Ensuring page is on active mirror ({self.active_base_url}), currently at '{current_url}'")
                 page, _ = await self._safe_goto(self.active_base_url, wait_until="commit", timeout=20000)
-                passed = await self._handle_cloudflare_if_present(page, max_wait=25)
+                passed: bool = await self._handle_cloudflare_if_present(page, max_wait=25)
                 if not passed and allow_rotate and len(self.base_urls) > 1:
                     logger.warning(f"Active mirror {self.active_base_url} blocked by Cloudflare. Rotating mirror...")
                     await self.rotate_mirror()
                     return await self._ensure_on_mirror(self.page or page, allow_rotate=False)
                 return passed
             return True
-        except Exception as e:
-            logger.debug(f"Error ensuring mirror navigation: {e}")
+        except Exception as error:
+            logger.debug(f"Error ensuring mirror navigation: {error}")
             return False
 
     async def _execute_single_search_api_call(self, page: Page, query_str: str) -> List[Dict[str, Any]]:
-        """Executes a single search API request against Animepahe via browser page evaluate."""
+        """
+        Executes a single search API request against Animepahe via browser page evaluate.
+
+        Parameters
+        ----------
+        page : Page
+            Playwright page instance.
+        query_str : str
+            Query string to search.
+
+        Returns
+        -------
+        list of dict of str to Any
+            List of matching anime dictionaries returned by API.
+        """
         try:
-            on_mirror = await self._ensure_on_mirror(page)
+            on_mirror: bool = await self._ensure_on_mirror(page)
             if not on_mirror:
                 logger.warning(f"Active mirror {self.active_base_url} is not accessible for search API")
                 return []
-            eval_result = await asyncio_wait_for(
+            eval_result: Any = await asyncio_wait_for(
                 page.evaluate('''async (queryTitle) => {
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -715,13 +950,13 @@ class AnimepaheScraper:
             )
 
             if isinstance(eval_result, dict):
-                status = eval_result.get("status", 0)
+                status: int = eval_result.get("status", 0)
                 if status in (403, 503, 520):
                     logger.warning(f"Search API returned status {status} (Cloudflare challenge suspected). Waiting for clearance...")
-                    passed = await self._handle_cloudflare_if_present(page, max_wait=20)
+                    passed: bool = await self._handle_cloudflare_if_present(page, max_wait=20)
                     if passed:
                         return await self._execute_single_search_api_call(page, query_str)
-                data = eval_result.get("data")
+                data: Optional[List[Dict[str, Any]]] = eval_result.get("data")
                 if data is not None:
                     return data
                 if eval_result.get("error"):
@@ -729,16 +964,28 @@ class AnimepaheScraper:
             elif isinstance(eval_result, list):
                 return eval_result
             return []
-        except Exception as e:
-            logger.debug(f"Search API error for '{query_str}': {e}")
+        except Exception as error:
+            logger.debug(f"Search API error for '{query_str}': {error}")
             return []
 
     async def _resolve_metadata_aliases(self, english_title: str) -> List[str]:
-        """Queries AniList and Jikan/MAL APIs to resolve official Romaji titles and synonyms."""
-        aliases = []
+        """
+        Queries AniList and Jikan/MAL APIs to resolve official Romaji titles and synonyms.
+
+        Parameters
+        ----------
+        english_title : str
+            English title to look up synonyms and aliases for.
+
+        Returns
+        -------
+        list of str
+            List of alias title strings.
+        """
+        aliases: List[str] = []
         # 1. AniList GraphQL
         try:
-            query = '''
+            query_graphql: str = '''
             query ($search: String) {
               Media (search: $search, type: ANIME) {
                 title { romaji english native }
@@ -747,37 +994,37 @@ class AnimepaheScraper:
             }
             '''
             async with HttpAsyncClient(timeout=3.5, follow_redirects=True) as client:
-                res = await client.post('https://graphql.anilist.co', json={'query': query, 'variables': {'search': english_title}})
-                if res.status_code == 200:
-                    media = res.json().get('data', {}).get('Media')
+                api_response: Any = await client.post('https://graphql.anilist.co', json={'query': query_graphql, 'variables': {'search': english_title}})
+                if api_response.status_code == 200:
+                    media: Optional[Dict[str, Any]] = api_response.json().get('data', {}).get('Media')
                     if media:
-                        titles = media.get('title', {})
-                        for k in ('romaji', 'english'):
-                            v = titles.get(k)
-                            if v and v.lower() != english_title.lower() and v not in aliases:
-                                aliases.append(v)
-                        for s in media.get('synonyms', []):
-                            if s and s.lower() != english_title.lower() and s not in aliases:
-                                aliases.append(s)
-        except Exception as e:
-            logger.debug(f"AniList alias resolution error: {e}")
+                        titles: Dict[str, str] = media.get('title', {})
+                        for key in ('romaji', 'english'):
+                            alias_val: Optional[str] = titles.get(key)
+                            if alias_val and alias_val.lower() != english_title.lower() and alias_val not in aliases:
+                                aliases.append(alias_val)
+                        for synonym in media.get('synonyms', []):
+                            if synonym and synonym.lower() != english_title.lower() and synonym not in aliases:
+                                aliases.append(synonym)
+        except Exception as error:
+            logger.debug(f"AniList alias resolution error: {error}")
 
         # 2. Jikan / MAL API
         try:
-            clean = re_sub(r'\s+(?:season\s+\d+|s\d+|ii|iii|iv|v|act\.\d+)\b', '', english_title, flags=IGNORECASE)
-            url = f"https://api.jikan.moe/v4/anime?q={url_quote(clean)}&limit=1"
+            cleaned_search: str = re_sub(r'\s+(?:season\s+\d+|s\d+|ii|iii|iv|v|act\.\d+)\b', '', english_title, flags=IGNORECASE)
+            jikan_url: str = f"https://api.jikan.moe/v4/anime?q={url_quote(cleaned_search)}&limit=1"
             async with HttpAsyncClient(timeout=3.5, follow_redirects=True) as client:
-                res = await client.get(url)
-                if res.status_code == 200:
-                    data = res.json().get("data", [])
-                    if data:
-                        top = data[0]
-                        for k in ("title", "title_japanese", "title_english"):
-                            v = top.get(k)
-                            if v and v.lower() != english_title.lower() and v not in aliases:
-                                aliases.append(v)
-        except Exception as e:
-            logger.debug(f"Jikan alias resolution error: {e}")
+                jikan_response: Any = await client.get(jikan_url)
+                if jikan_response.status_code == 200:
+                    jikan_data: List[Dict[str, Any]] = jikan_response.json().get("data", [])
+                    if jikan_data:
+                        top_result: Dict[str, Any] = jikan_data[0]
+                        for key in ("title", "title_japanese", "title_english"):
+                            candidate_title: Optional[str] = top_result.get(key)
+                            if candidate_title and candidate_title.lower() != english_title.lower() and candidate_title not in aliases:
+                                aliases.append(candidate_title)
+        except Exception as error:
+            logger.debug(f"Jikan alias resolution error: {error}")
 
         return aliases
 
@@ -788,37 +1035,47 @@ class AnimepaheScraper:
         2. Base franchise title (stripped of Roman numerals, Season X, arc subtitles).
         3. Distinctive keyword pruning (stopwords removed, sub-clauses).
         4. Public metadata alias bridge (AniList GraphQL & Jikan Romaji/synonyms resolution).
+
+        Parameters
+        ----------
+        title : str
+            Title of the anime to search.
+
+        Returns
+        -------
+        list of dict of str to Any
+            List of matched anime candidate dictionaries from Animepahe API.
         """
-        page = await self._create_page()
+        page: Page = await self._create_page()
         try:
-            on_mirror = await self._ensure_on_mirror(page)
+            on_mirror: bool = await self._ensure_on_mirror(page)
             if not on_mirror:
                 logger.warning(f"Active mirror {self.active_base_url} is not accessible for search")
                 return []
 
             # Tier 1 - 3: Progressive decomposed queries
-            queries = self.ai_helper.decompose_search_queries(title)
-            for idx, q in enumerate(queries, start=1):
-                logger.debug(f"[Search Tier {idx}] Querying Animepahe: '{q}'")
-                results = await self._execute_single_search_api_call(page, q)
+            queries: List[str] = self.ai_helper.decompose_search_queries(title)
+            for tier_index, query_candidate in enumerate(queries, start=1):
+                logger.debug(f"[Search Tier {tier_index}] Querying Animepahe: '{query_candidate}'")
+                results: List[Dict[str, Any]] = await self._execute_single_search_api_call(page, query_candidate)
                 if results:
-                    logger.debug(f"[Search Tier {idx}] Found {len(results)} candidate(s) for query: '{q}'")
+                    logger.debug(f"[Search Tier {tier_index}] Found {len(results)} candidate(s) for query: '{query_candidate}'")
                     return results
 
             # Tier 4: Metadata alias bridge (AniList + Jikan synonyms)
-            aliases = await self._resolve_metadata_aliases(title)
+            aliases: List[str] = await self._resolve_metadata_aliases(title)
             if aliases:
-                for al in aliases:
-                    for al_q in self.ai_helper.decompose_search_queries(al):
-                        logger.debug(f"[Search Tier 4 Alias] Querying Animepahe with alias query: '{al_q}'")
-                        results = await self._execute_single_search_api_call(page, al_q)
-                        if results:
-                            return results
+                for alias_item in aliases:
+                    for alias_query in self.ai_helper.decompose_search_queries(alias_item):
+                        logger.debug(f"[Search Tier 4 Alias] Querying Animepahe with alias query: '{alias_query}'")
+                        alias_results: List[Dict[str, Any]] = await self._execute_single_search_api_call(page, alias_query)
+                        if alias_results:
+                            return alias_results
 
             logger.debug(f"All progressive search tiers yielded 0 results for '{title}'")
             return []
-        except Exception as e:
-            logger.error(f"Error executing search queries for '{title}': {e}")
+        except Exception as error:
+            logger.error(f"Error executing search queries for '{title}': {error}")
             return []
 
     def _select_preferred_source(
@@ -833,14 +1090,19 @@ class AnimepaheScraper:
 
         Parameters
         ----------
-        options (List[Dict[str, str]]): List of available download source options.
-        anime_title (str): Title of the anime series.
-        episode_num (int): Episode number being evaluated.
-        preferred_resolution (Optional[str]): Explicit preferred resolution ('1080', '720', '480', '360').
+        options : list of dict of str to str
+            List of available download source options.
+        anime_title : str
+            Title of the anime series.
+        episode_num : int
+            Episode number being evaluated.
+        preferred_resolution : str, optional
+            Explicit preferred resolution ('1080', '720', '480', '360').
 
         Returns
         -------
-        Optional[Dict[str, str]]: Selected source option dictionary, or None if awaiting release.
+        dict of str to str or None
+            Selected source option dictionary, or None if awaiting release.
         """
         if not options:
             return None
@@ -857,29 +1119,29 @@ class AnimepaheScraper:
         # Strict modes
         usable_options: List[Dict[str, str]]
         if self.audio_preference == "sub_strict":
-            usable_options = subbed_options
+            usable_options: List[Dict[str, str]] = subbed_options
             if not usable_options:
                 logger.info(f"Strict Subbed active: Skipping '{anime_title}' Ep {episode_num} (No subbed release available)")
                 return None
         elif self.audio_preference == "dub_strict":
-            usable_options = dubbed_options
+            usable_options: List[Dict[str, str]] = dubbed_options
             if not usable_options:
                 logger.info(f"Strict Dubbed active: Skipping '{anime_title}' Ep {episode_num} (No dubbed release available)")
                 return None
         elif self.audio_preference == "dub":
-            usable_options = dubbed_options if dubbed_options else subbed_options
+            usable_options: List[Dict[str, str]] = dubbed_options if dubbed_options else subbed_options
         else:
             # Default "sub"
-            usable_options = subbed_options if subbed_options else dubbed_options
+            usable_options: List[Dict[str, str]] = subbed_options if subbed_options else dubbed_options
 
         if not usable_options:
-            usable_options = options
+            usable_options: List[Dict[str, str]] = options
 
         explicit_resolution: Optional[str] = preferred_resolution or self.preferred_resolution
         if explicit_resolution:
             target_resolution: str = explicit_resolution.lower().rstrip("p")
             if target_resolution not in RESOLUTION_PRIORITY_MAP:
-                target_resolution = DEFAULT_PREFERRED_RESOLUTION
+                target_resolution: str = DEFAULT_PREFERRED_RESOLUTION
 
             exact_resolution_tag: str = f"{target_resolution}p"
             priority_list: List[str] = RESOLUTION_PRIORITY_MAP.get(target_resolution, ["1080p", "720p", "480p", "360p"])
@@ -930,23 +1192,26 @@ class AnimepaheScraper:
 
         Parameters
         ----------
-        play_url (str): The episode play URL or anime overview URL.
+        play_url : str
+            The episode play URL or anime overview URL.
 
         Returns
         -------
-        Tuple[str, Dict[int, str]]: Series title and mapping of episode numbers to play URLs.
+        Tuple[str, Dict[int, str]]
+            Series title and mapping of episode numbers to play URLs.
 
         Raises
         ------
-        RuntimeError: If the active mirror is inaccessible or blocked by Cloudflare challenge.
+        RuntimeError
+            If the active mirror is inaccessible or blocked by Cloudflare challenge.
         """
-        page = await self._create_page()
+        page: Page = await self._create_page()
         try:
             # Normalize play_url to active mirror domain
             mirror_url: str
             for mirror_url in self.base_urls:
                 if play_url.startswith(mirror_url):
-                    play_url = play_url.replace(mirror_url, self.active_base_url, 1)
+                    play_url: str = play_url.replace(mirror_url, self.active_base_url, 1)
                     break
 
             logger.info(f"Accessing episode catalog for: {play_url}")
@@ -958,7 +1223,7 @@ class AnimepaheScraper:
             anime_session: str = ""
             session_match: Optional[Match[str]] = re_search(r'/(?:play|anime)/([a-zA-Z0-9\-]+)', play_url)
             if session_match:
-                anime_session = session_match.group(1)
+                anime_session: str = session_match.group(1)
 
             episodes: Dict[int, str] = {}
             show_title: str = ""
@@ -971,7 +1236,7 @@ class AnimepaheScraper:
                     api_data: Optional[Dict[str, Any]] = None
                     for attempt in range(2):
                         try:
-                            api_data = await asyncio_wait_for(
+                            api_data: Optional[Dict[str, Any]] = await asyncio_wait_for(
                                 page.evaluate(f'''async () => {{
                                     const controller = new AbortController();
                                     const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -982,9 +1247,7 @@ class AnimepaheScraper:
                                         }});
                                         clearTimeout(timeoutId);
                                         if (res.ok) return await res.json();
-                                    }} catch (e) {{
-                                        clearTimeout(timeoutId);
-                                    }}
+                                    }} catch (e) {{}}
                                     return null;
                                 }}'''),
                                 timeout=10.0
@@ -1018,7 +1281,7 @@ class AnimepaheScraper:
             # If API yielded 0 episodes or session extraction was absent, fallback to page navigation & DOM
             fallback_navigation_url: str = play_url
             if anime_session and play_url.rstrip('/').endswith(f"/play/{anime_session}"):
-                fallback_navigation_url = f"{self.active_base_url}/anime/{anime_session}"
+                fallback_navigation_url: str = f"{self.active_base_url}/anime/{anime_session}"
 
             page, _ = await self._safe_goto(fallback_navigation_url, wait_until="commit", timeout=25000)
             await self._handle_cloudflare_if_present(page, max_wait=20)
@@ -1047,7 +1310,7 @@ class AnimepaheScraper:
                 return { title: showTitle, href: showHref };
             }''')
 
-            show_title = show_info.get("title", "")
+            show_title: str = show_info.get("title", "")
             show_href: str = show_info.get("href", "")
 
             episodes_dom: Dict[str, str] = await page.evaluate('''() => {
@@ -1071,7 +1334,7 @@ class AnimepaheScraper:
                 return epMap;
             }''')
 
-            episodes = {int(key): urljoin(self.active_base_url, val) for key, val in episodes_dom.items()}
+            episodes: Dict[int, str] = {int(key): urljoin(self.active_base_url, episode_href) for key, episode_href in episodes_dom.items()}
             logger.info(f"Retrieved {len(episodes)} total episodes for '{show_title}' via DOM.")
             return show_title, episodes
 
@@ -1109,11 +1372,11 @@ class AnimepaheScraper:
             Episode player or redirect URL.
         temp_target_file : Path
             Destination temporary file path.
-        preferred_resolution : Optional[str], default=None
+        preferred_resolution : str, optional
             Requested video resolution tier.
-        progress_callback : Optional[Callable[[float, int, int, float], None]], default=None
+        progress_callback : callable, optional
             Callback function invoked with progress percentage, downloaded bytes, total bytes, speed mbps.
-        stall_timeout : float, default=DEFAULT_STALL_TIMEOUT_SECONDS
+        stall_timeout : float, default DEFAULT_STALL_TIMEOUT_SECONDS
             Maximum duration in seconds to wait for subsequent chunk packets before aborting.
 
         Returns
@@ -1129,10 +1392,10 @@ class AnimepaheScraper:
             await self.jitter(1.0, 2.0)
 
             # Wait for and click #downloadMenu button to open #pickDownload
-            menu_button = None
+            menu_button: Optional[ElementHandle] = None
             for _ in range(2):
                 try:
-                    menu_button = await page.wait_for_selector(
+                    menu_button: Optional[ElementHandle] = await page.wait_for_selector(
                         "#downloadMenu, button.dropdown-toggle, .download",
                         timeout=18000,
                     )
@@ -1165,7 +1428,7 @@ class AnimepaheScraper:
             download_options: List[Dict[str, str]] = []
             for poll_index in range(8):
                 await asyncio_sleep(0.75)
-                download_options = await page.evaluate(
+                download_options: List[Dict[str, str]] = await page.evaluate(
                     r"""() => {
                     const containers = document.querySelectorAll('#pickDownload, .dropdown-menu');
                     const results = [];
@@ -1183,71 +1446,64 @@ class AnimepaheScraper:
                 )
                 if download_options:
                     break
-                if poll_index == 3:
-                    logger.debug(
-                        "Dropdown options not yet visible. Dispatching synthetic MouseEvent click to #downloadMenu..."
-                    )
+                logger.debug(
+                    f"Poll {poll_index + 1}/8: #pickDownload empty, dispatching JS click fallback..."
+                )
+                try:
                     await page.evaluate(
                         """() => {
-                        const dropdown_element = document.querySelector('#downloadMenu, button.dropdown-toggle, .download');
-                        if (dropdown_element) {
-                            dropdown_element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                        }
+                        const menu = document.querySelector('#downloadMenu');
+                        if (menu) menu.click();
                     }"""
                     )
+                except Exception:
+                    pass
 
             if not download_options:
-                logger.warning(
+                logger.error(
                     f"No download options found in dropdown for '{anime_title}' Ep {episode_num}"
                 )
                 await self._reset_page()
                 return False
 
-            # Select target option using audio preference and resolution rules
-            target_option = self._select_preferred_source(
+            chosen_option: Optional[Dict[str, str]] = self._select_preferred_source(
                 options=download_options,
                 anime_title=anime_title,
                 episode_num=episode_num,
                 preferred_resolution=preferred_resolution,
             )
-            if not target_option:
+            if not chosen_option:
+                logger.error(
+                    f"Could not resolve acceptable source/resolution for '{anime_title}' Ep {episode_num}"
+                )
                 await self._reset_page()
                 return False
 
-            target_href: str = target_option["href"]
-            logger.info(f"Selected resolution link: '{target_option['text']}' -> {target_href}")
+            kwik_url: str = chosen_option["href"]
+            logger.info(
+                f"Selected download stream for '{anime_title}' Ep {episode_num}: {kwik_url}"
+            )
 
-            # Navigate to redirect page
-            logger.debug(f"Navigating to redirect page: {target_href}")
-            page, _ = await self._safe_goto(target_href, wait_until="commit", timeout=35000)
+            # Follow kwik redirect link
+            page, _ = await self._safe_goto(kwik_url, wait_until="commit", timeout=45000)
             await self._handle_cloudflare_if_present(page, max_wait=30)
             await self.jitter(1.0, 2.0)
 
-            # Extract kwik link
-            current_page_url: str = page.url or ""
-            html_content: str = await page.content()
-            regex_match: Optional[Match[str]] = re_search(
-                r"https?://(?:kwik\.[a-z]+|pahe\.win)/f/([a-zA-Z0-9]+)", html_content
-            )
-            kwik_url: str = regex_match.group(0) if regex_match else current_page_url
+            # Cloudflare Turnstile click resolution on Kwik page
+            await self._click_turnstile_if_present(page)
 
-            # Only perform explicit navigation if we are not already on the destination Kwik page
-            if (
-                ("kwik" in kwik_url or "/f/" in kwik_url)
-                and kwik_url != current_page_url
-                and "/f/" not in current_page_url
-            ):
-                logger.debug(f"Navigating to Kwik page: {kwik_url}")
-                page, _ = await self._safe_goto(
-                    kwik_url, wait_until="domcontentloaded", timeout=35000
+            # Ensure page is on actual kwik download domain
+            kwik_title: str = await page.title()
+            kwik_current_url: str = page.url or ""
+            if "kwik" not in kwik_current_url and "kwik" not in kwik_title.lower():
+                logger.debug(
+                    f"Page landed at {kwik_current_url} (Title: '{kwik_title}'). Waiting for kwik redirect..."
                 )
-                await self._handle_cloudflare_if_present(page, max_wait=45)
-                await self.jitter(1.0, 2.0)
-            else:
-                await self._handle_cloudflare_if_present(page, max_wait=45)
+                await self._handle_cloudflare_if_present(page, max_wait=20)
+                await asyncio_sleep(2.0)
 
-            temporary_partial_file: Path = temp_target_file.with_name(
-                f"{temp_target_file.name}.partial"
+            temporary_partial_file: Path = temp_target_file.with_suffix(
+                temp_target_file.suffix + ".part"
             )
             if temporary_partial_file.exists():
                 temporary_partial_file.unlink()
@@ -1262,16 +1518,16 @@ class AnimepaheScraper:
                 "a.button, input[type='submit'], button:has-text('Download'), .btn-download, button"
             )
 
-            submit_element = None
+            submit_element: Optional[ElementHandle] = None
             try:
-                submit_element = await page.wait_for_selector(download_selector, timeout=25000)
+                submit_element: Optional[ElementHandle] = await page.wait_for_selector(download_selector, timeout=25000)
             except Exception:
                 logger.debug(
                     "Download selector not immediately visible. Checking Cloudflare clearance and DOM state..."
                 )
                 await self._handle_cloudflare_if_present(page, max_wait=15)
                 try:
-                    submit_element = await page.wait_for_selector(download_selector, timeout=10000)
+                    submit_element: Optional[ElementHandle] = await page.wait_for_selector(download_selector, timeout=10000)
                 except Exception:
                     pass
 
@@ -1282,7 +1538,7 @@ class AnimepaheScraper:
                 )
                 if has_form:
                     logger.debug("Found form in DOM, acquiring submit element...")
-                    submit_element = await page.query_selector(
+                    submit_element: Optional[ElementHandle] = await page.query_selector(
                         "form button, form input[type='submit'], form"
                     )
 
@@ -1298,12 +1554,12 @@ class AnimepaheScraper:
                     await page.evaluate(
                         "() => { const form = document.querySelector('form'); if (form) form.submit(); }"
                     )
-            download = await download_info.value
+            download: Download = await download_info.value
 
             cdn_url: str = download.url
             logger.info(f"Resolved CDN download link: {cdn_url[:80]}...")
 
-            browser_cookies = await self.context.cookies()
+            browser_cookies: List[Dict[str, Any]] = await self.context.cookies()
             cookie_dictionary: Dict[str, str] = {
                 cookie["name"]: cookie["value"] for cookie in browser_cookies
             }
@@ -1333,7 +1589,7 @@ class AnimepaheScraper:
                 ) as http_client:
                     async with http_client.stream("GET", cdn_url) as stream_response:
                         if stream_response.status_code == 200:
-                            download_cancelled = True
+                            download_cancelled: bool = True
                             try:
                                 await download.cancel()
                             except Exception:
@@ -1367,19 +1623,19 @@ class AnimepaheScraper:
                                         now_time - last_progress_emit_time >= 0.5
                                     ):
                                         progress_callback(
-                                            progress_percentage,
-                                            downloaded_bytes,
-                                            total_bytes,
-                                            speed_mbps,
+                                             progress_percentage,
+                                             downloaded_bytes,
+                                             total_bytes,
+                                             speed_mbps,
                                         )
-                                        last_progress_emit_time = now_time
+                                        last_progress_emit_time: float = now_time
 
                             if (
                                 temporary_partial_file.exists()
                                 and temporary_partial_file.stat().st_size > 1024 * 1024
                             ):
                                 temporary_partial_file.replace(temp_target_file)
-                                stream_succeeded = True
+                                stream_succeeded: bool = True
                                 final_elapsed: float = current_timestamp() - start_download_time
                                 final_bytes: int = temp_target_file.stat().st_size
                                 final_megabytes: float = final_bytes / (1024.0 * 1024.0)
