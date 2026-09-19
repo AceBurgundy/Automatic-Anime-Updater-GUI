@@ -14,14 +14,14 @@ void main() {
     });
 
     test('resolveCliDirectory returns valid non-empty path', () {
-      final String cliDir = CliBridgeService.instance.resolveCliDirectory();
-      expect(cliDir, isNotEmpty);
-      expect(cliDir.contains('backend') || cliDir.contains('anime-refresher-cli'), isTrue);
+      final String cliDirectory = CliBridgeService.instance.resolveCliDirectory();
+      expect(cliDirectory, isNotEmpty);
+      expect(cliDirectory.contains('backend') || cliDirectory.contains('anime-refresher-cli'), isTrue);
     });
 
     test('resolvePythonBinary returns valid string', () {
-      final String pythonBin = CliBridgeService.instance.resolvePythonBinary();
-      expect(pythonBin, isNotEmpty);
+      final String pythonBinary = CliBridgeService.instance.resolvePythonBinary();
+      expect(pythonBinary, isNotEmpty);
     });
 
     test('CliConfigState copyWith works as expected', () {

@@ -9,29 +9,32 @@ import 'package:kyaa_app/core/theme/theme_controller.dart';
 import 'package:kyaa_app/main.dart';
 import 'package:kyaa_app/widgets/navigation/tabbed_navigation.dart';
 
+/// Loads bundled fonts into the test environment for pixel-accurate rendering.
 Future<void> _loadFonts() async {
   try {
     final FontLoader googleSansLoader = FontLoader('GoogleSans');
     final File regularFile = File('assets/fonts/GoogleSans-Regular.ttf');
     if (regularFile.existsSync()) {
-      googleSansLoader.addFont(Future.value(ByteData.view(regularFile.readAsBytesSync().buffer)));
+      googleSansLoader.addFont(Future<ByteData>.value(ByteData.view(regularFile.readAsBytesSync().buffer)));
     }
     final File mediumFile = File('assets/fonts/GoogleSans-Medium.ttf');
     if (mediumFile.existsSync()) {
-      googleSansLoader.addFont(Future.value(ByteData.view(mediumFile.readAsBytesSync().buffer)));
+      googleSansLoader.addFont(Future<ByteData>.value(ByteData.view(mediumFile.readAsBytesSync().buffer)));
     }
     final File boldFile = File('assets/fonts/GoogleSans-Bold.ttf');
     if (boldFile.existsSync()) {
-      googleSansLoader.addFont(Future.value(ByteData.view(boldFile.readAsBytesSync().buffer)));
+      googleSansLoader.addFont(Future<ByteData>.value(ByteData.view(boldFile.readAsBytesSync().buffer)));
     }
     await googleSansLoader.load();
 
     final FontLoader monospaceLoader = FontLoader('monospace');
     if (regularFile.existsSync()) {
-      monospaceLoader.addFont(Future.value(ByteData.view(regularFile.readAsBytesSync().buffer)));
+      monospaceLoader.addFont(Future<ByteData>.value(ByteData.view(regularFile.readAsBytesSync().buffer)));
       await monospaceLoader.load();
     }
-  } catch (_) {}
+  } catch (exception) {
+    debugPrint('Notice loading fonts: $exception');
+  }
 
   try {
     final FontLoader materialIconsLoader = FontLoader('MaterialIcons');
@@ -39,10 +42,12 @@ Future<void> _loadFonts() async {
       'D:/Documents/Programming/Frameworks/Flutter/fvm/default/bin/cache/dart-sdk/bin/resources/devtools/assets/fonts/MaterialIcons-Regular.otf',
     );
     if (iconFile.existsSync()) {
-      materialIconsLoader.addFont(Future.value(ByteData.view(iconFile.readAsBytesSync().buffer)));
+      materialIconsLoader.addFont(Future<ByteData>.value(ByteData.view(iconFile.readAsBytesSync().buffer)));
       await materialIconsLoader.load();
     }
-  } catch (_) {}
+  } catch (exception) {
+    debugPrint('Notice loading icon fonts: $exception');
+  }
 }
 
 void main() {
@@ -98,8 +103,7 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 300));
         await tester.pump();
 
-        final RenderRepaintBoundary boundary =
-            repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+        final RenderRepaintBoundary boundary = repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
         final ui.Image image = await boundary.toImage(pixelRatio: 1.0);
         final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         expect(byteData, isNotNull);
@@ -117,7 +121,9 @@ void main() {
           final File rootFile = File('../images/$fileName');
           rootFile.parent.createSync(recursive: true);
           rootFile.writeAsBytesSync(pngBytes);
-        } catch (_) {}
+        } catch (exception) {
+          debugPrint('Notice writing root image file: $exception');
+        }
 
         // Also save with descriptive names (e.g. tasks_tab.png)
         final File descriptiveFile = File('images/${tab.name}_tab.png');
