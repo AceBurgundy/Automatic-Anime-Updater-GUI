@@ -23,6 +23,17 @@ logger: Logger = getLogger("anime_refresher.ai")
 
 
 class AIHelper:
+    """
+    Intelligent title parser, fuzzy matcher, and Ollama LLM integration helper.
+
+    Attributes
+    ----------
+    host : str
+        Endpoint URL for the local Ollama LLM service.
+    model : str
+        Target Ollama model identifier.
+    """
+
     host: str
     model: str
     _WIN_FORBIDDEN: Pattern[str] = re_compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -151,9 +162,13 @@ class AIHelper:
                             if isinstance(item, (int, float, str)) and str(item).isdigit()
                         }
                     elif isinstance(parsed, dict):
-                        for val in parsed.values():
-                            if isinstance(val, list):
-                                return {int(item) for item in val if str(item).isdigit()}
+                        for candidate_value in parsed.values():
+                            if isinstance(candidate_value, list):
+                                return {
+                                    int(item)
+                                    for item in candidate_value
+                                    if str(item).isdigit()
+                                }
         except Exception as error:
             logger.debug(f"AI episode extraction unavailable or timed out: {error}")
         return None
@@ -185,7 +200,7 @@ class AIHelper:
                 continue
 
             # 2. Episode / EP / E prefix: 'Episode 01', 'EP 01', 'E01'
-            regex_match = re_search(
+            regex_match: Optional[Match[str]] = re_search(
                 r"(?:\bEpisode\s*|\bEP\s*|\bE)(\d{1,4})(?:v\d)?(?:\s*\[|\s*\(|\s*$)",
                 stem,
                 IGNORECASE,
@@ -195,14 +210,18 @@ class AIHelper:
                 continue
 
             # 3. S01E05 or 1x05
-            regex_match = re_search(r"(?:S\d+E|(?:\b\d+)x)(\d{1,4})", stem, IGNORECASE)
+            regex_match: Optional[Match[str]] = re_search(
+                r"(?:S\d+E|(?:\b\d+)x)(\d{1,4})", stem, IGNORECASE
+            )
             if regex_match:
                 episodes.add(int(regex_match.group(1)))
                 continue
 
             # 4. Trailing integer at the end of the stem (ignoring trailing tags)
             clean_stem: str = re_sub(r"\[.*?\]|\(.*?\)", "", stem).strip()
-            regex_match = re_search(r"(?:^|[\s_.])(\d{1,4})(?:v\d)?$", clean_stem)
+            regex_match: Optional[Match[str]] = re_search(
+                r"(?:^|[\s_.])(\d{1,4})(?:v\d)?$", clean_stem
+            )
             if regex_match:
                 episodes.add(int(regex_match.group(1)))
                 continue
@@ -250,7 +269,7 @@ class AIHelper:
                     Path(file_name).stem,
                 )
                 if regex_match:
-                    digits = max(digits, len(regex_match.group(1)))
+                    digits: int = max(digits, len(regex_match.group(1)))
                     break
 
         formatted_episode: str = f"{episode_num:0{digits}d}"
@@ -359,30 +378,30 @@ class AIHelper:
                 r"^(.*?)(?:\s+-\s+|\s+)(Episode|EP|E)\s*(\d{1,4})(.*)$", stem, IGNORECASE
             )
             if match_episode_tag:
-                prefix = match_episode_tag.group(1).strip()
+                prefix: str = match_episode_tag.group(1).strip()
                 tag: str = match_episode_tag.group(2)
-                sample_digits = len(match_episode_tag.group(3))
-                suffix_extra = match_episode_tag.group(4).rstrip()
-                formatted_episode = f"{episode_num:0{max(sample_digits, 2)}d}"
+                sample_digits: int = len(match_episode_tag.group(3))
+                suffix_extra: str = match_episode_tag.group(4).rstrip()
+                formatted_episode: str = f"{episode_num:0{max(sample_digits, 2)}d}"
                 separator: str = " - " if " - " in stem else " "
                 return f"{prefix}{separator}{tag} {formatted_episode}{suffix_extra}{extension}"
 
             # Match standard hyphen pattern: "{prefix} - {ep}{suffix}"
             match_hyphen: Optional[Match[str]] = re_search(r"^(.*?)\s*-\s*(\d{1,4})(.*)$", stem)
             if match_hyphen:
-                prefix = match_hyphen.group(1).strip()
-                sample_digits = len(match_hyphen.group(2))
-                suffix_extra = match_hyphen.group(3).rstrip()
-                formatted_episode = f"{episode_num:0{max(sample_digits, 2)}d}"
+                prefix: str = match_hyphen.group(1).strip()
+                sample_digits: int = len(match_hyphen.group(2))
+                suffix_extra: str = match_hyphen.group(3).rstrip()
+                formatted_episode: str = f"{episode_num:0{max(sample_digits, 2)}d}"
                 return f"{prefix} - {formatted_episode}{suffix_extra}{extension}"
 
             # Match spaced pattern without hyphen: "{prefix} {ep}{suffix}"
             match_space: Optional[Match[str]] = re_search(r"^(.*?)\s+(\d{1,4})(.*)$", stem)
             if match_space:
-                prefix = match_space.group(1).strip()
-                sample_digits = len(match_space.group(2))
-                suffix_extra = match_space.group(3).rstrip()
-                formatted_episode = f"{episode_num:0{max(sample_digits, 2)}d}"
+                prefix: str = match_space.group(1).strip()
+                sample_digits: int = len(match_space.group(2))
+                suffix_extra: str = match_space.group(3).rstrip()
+                formatted_episode: str = f"{episode_num:0{max(sample_digits, 2)}d}"
                 return f"{prefix} {formatted_episode}{suffix_extra}{extension}"
 
             # 2. Secondary: Fallback to AI helper if available
@@ -391,7 +410,7 @@ class AIHelper:
             )
             if suggested:
                 if downloaded_ext:
-                    suggested = Path(suggested).with_suffix(downloaded_ext).name
+                    suggested: str = Path(suggested).with_suffix(downloaded_ext).name
                 return suggested
 
         # Default standard format
@@ -418,7 +437,7 @@ class AIHelper:
         """
         queries: List[str] = []
         clean_title: str = self._WIN_FORBIDDEN.sub(" ", folder_title).strip()
-        clean_title = re_sub(r"\s+", " ", clean_title)
+        clean_title: str = re_sub(r"\s+", " ", clean_title)
         if clean_title:
             queries.append(clean_title)
 
@@ -429,11 +448,11 @@ class AIHelper:
             clean_title,
             flags=IGNORECASE,
         )
-        base_title = re_sub(
+        base_title: str = re_sub(
             r"\s+(?:x|ix|viii|vii|vi|v|iv|iii|ii|i)\b\s*$", "", base_title, flags=IGNORECASE
         )
-        base_title = re_sub(r"[:\-–—]\s*.*$", "", base_title).strip()
-        base_title = re_sub(r"\s+", " ", base_title)
+        base_title: str = re_sub(r"[:\-–—]\s*.*$", "", base_title).strip()
+        base_title: str = re_sub(r"\s+", " ", base_title)
 
         if base_title and base_title.lower() not in [q.lower() for q in queries]:
             queries.append(base_title)
@@ -488,12 +507,25 @@ class AIHelper:
             return 0.0
 
         def normalize_string(raw_string: str) -> str:
+            """
+            Normalize anime title strings for uniform comparison.
+
+            Parameters
+            ----------
+            raw_string : str
+                Raw anime title string.
+
+            Returns
+            -------
+            str
+                Sanitized string with unified roman numerals, symbols, and season tags.
+            """
             cleaned: str = self._WIN_FORBIDDEN.sub(" ", raw_string).lower()
-            cleaned = re_sub(r"[^\w\s]", " ", cleaned)
+            cleaned: str = re_sub(r"[^\w\s]", " ", cleaned)
             for roman_numeral, arabic_numeral in self._ROMAN_MAP.items():
-                cleaned = re_sub(rf"\b{roman_numeral}\b", arabic_numeral, cleaned)
-            cleaned = re_sub(r"\bs(\d+)\b", r"season \1", cleaned)
-            cleaned = re_sub(r"(\d+)(?:st|nd|rd|th)\s+season", r"season \1", cleaned)
+                cleaned: str = re_sub(rf"\b{roman_numeral}\b", arabic_numeral, cleaned)
+            cleaned: str = re_sub(r"\bs(\d+)\b", r"season \1", cleaned)
+            cleaned: str = re_sub(r"(\d+)(?:st|nd|rd|th)\s+season", r"season \1", cleaned)
             return re_sub(r"\s+", " ", cleaned).strip()
 
         norm_folder: str = normalize_string(folder_title)
@@ -608,11 +640,37 @@ class AIHelper:
             return False
 
         def base_norm(raw_string: str) -> str:
+            """
+            Normalize whitespace and non-word characters for exact baseline comparison.
+
+            Parameters
+            ----------
+            raw_string : str
+                Raw anime title string.
+
+            Returns
+            -------
+            str
+                Lowercase string with stripped punctuation and normalized whitespace.
+            """
             return re_sub(
                 r"\s+", " ", re_sub(r"[^\w\s]", " ", raw_string)
             ).strip().lower()
 
         def win_strip(raw_string: str) -> str:
+            """
+            Normalize string by stripping Windows-forbidden filesystem characters.
+
+            Parameters
+            ----------
+            raw_string : str
+                Raw anime title string.
+
+            Returns
+            -------
+            str
+                Sanitized lowercase string without Windows filesystem forbidden characters.
+            """
             return re_sub(
                 r"\s+", " ", self._WIN_FORBIDDEN.sub(" ", raw_string)
             ).strip().lower()
@@ -627,9 +685,24 @@ class AIHelper:
 
         # Fast Path 2: Season shorthand normalization
         def season_norm(norm_string: str) -> str:
-            norm_string = re_sub(r"\bs(\d+)\b", r"season \1", norm_string)
-            norm_string = re_sub(r"(\d+)(?:st|nd|rd|th)\s+season", r"season \1", norm_string)
-            return norm_string
+            """
+            Normalize season shorthand indicators to explicit full form.
+
+            Parameters
+            ----------
+            norm_string : str
+                Pre-normalized anime title string.
+
+            Returns
+            -------
+            str
+                String with unified season tokens.
+            """
+            normalized_season: str = re_sub(r"\bs(\d+)\b", r"season \1", norm_string)
+            normalized_season: str = re_sub(
+                r"(\d+)(?:st|nd|rd|th)\s+season", r"season \1", normalized_season
+            )
+            return normalized_season
 
         if season_norm(norm_folder) == season_norm(norm_candidate):
             logger.debug(f"[Fast Season Match] '{folder_title}' == '{candidate_title}'")
