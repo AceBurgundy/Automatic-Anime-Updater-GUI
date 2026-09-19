@@ -39,6 +39,7 @@ class SchedulingView extends StatefulWidget {
 }
 
 class _SchedulingViewState extends State<SchedulingView> {
+  /// Ordered list of days in the week with their short and full titles.
   final List<DayInfo> _days = const <DayInfo>[
     DayInfo(letter: 'M', name: 'Monday'),
     DayInfo(letter: 'T', name: 'Tuesday'),
@@ -49,10 +50,13 @@ class _SchedulingViewState extends State<SchedulingView> {
     DayInfo(letter: 'S', name: 'Sunday'),
   ];
 
+  /// Active selection state flags corresponding to [_days].
   late List<bool> _daySelections;
+
+  /// Whether all days are selected collectively.
   bool _isEverydayOn = true;
 
-  // 12-Hour format times
+  /// Configured 12-hour formatted automation trigger times.
   final List<String> _triggerTimes = <String>['04:00 AM', '12:30 PM', '08:00 PM'];
 
   @override
@@ -374,7 +378,9 @@ class _SchedulingViewState extends State<SchedulingView> {
   }
 }
 
+/// Internal squircle button widget representing a single day of the week.
 class _DayButton extends StatefulWidget {
+  /// Creates a [_DayButton] widget.
   const _DayButton({
     required this.day,
     required this.isActive,
@@ -382,9 +388,16 @@ class _DayButton extends StatefulWidget {
     this.tokens,
   });
 
+  /// Associated day data record.
   final DayInfo day;
+
+  /// Whether this day is currently active.
   final bool isActive;
+
+  /// Callback executed when the day button is tapped.
   final VoidCallback onTap;
+
+  /// Optional active theme color tokens.
   final AppColorTokens? tokens;
 
   @override
@@ -392,6 +405,7 @@ class _DayButton extends StatefulWidget {
 }
 
 class _DayButtonState extends State<_DayButton> {
+  /// Whether the button is currently hovered.
   bool _isHovered = false;
 
   @override
@@ -446,15 +460,22 @@ class _DayButtonState extends State<_DayButton> {
   }
 }
 
+/// Internal pill chip representing a scheduled execution trigger time.
 class _TimePill extends StatefulWidget {
+  /// Creates a [_TimePill] widget.
   const _TimePill({
     required this.time,
     required this.onRemove,
     this.tokens,
   });
 
+  /// 12-hour formatted time string.
   final String time;
+
+  /// Callback executed when removing this trigger time.
   final VoidCallback onRemove;
+
+  /// Optional active theme color tokens.
   final AppColorTokens? tokens;
 
   @override
@@ -462,6 +483,7 @@ class _TimePill extends StatefulWidget {
 }
 
 class _TimePillState extends State<_TimePill> {
+  /// Whether the remove button icon is currently hovered.
   bool _isCloseHovered = false;
 
   @override

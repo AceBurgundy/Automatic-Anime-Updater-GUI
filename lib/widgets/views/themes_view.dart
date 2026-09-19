@@ -84,6 +84,7 @@ class _ThemesViewState extends State<ThemesView> {
 
 /// Interactive theme preview card with skeleton animation and right-side active indicator dot.
 class _ThemeCard extends StatefulWidget {
+  /// Creates a [_ThemeCard] preview widget.
   const _ThemeCard({
     super.key,
     required this.option,
@@ -91,8 +92,13 @@ class _ThemeCard extends StatefulWidget {
     required this.onTap,
   });
 
+  /// Associated palette option.
   final AppPaletteOption option;
+
+  /// Whether this theme palette is currently selected.
   final bool isSelected;
+
+  /// Callback executed when this theme card is tapped.
   final VoidCallback onTap;
 
   @override
@@ -100,7 +106,10 @@ class _ThemeCard extends StatefulWidget {
 }
 
 class _ThemeCardState extends State<_ThemeCard> with SingleTickerProviderStateMixin {
+  /// Whether the pointer is hovering over this card.
   bool _isHovered = false;
+
+  /// Animation controller driving shimmer preview effects.
   late final AnimationController _animationController;
 
   @override

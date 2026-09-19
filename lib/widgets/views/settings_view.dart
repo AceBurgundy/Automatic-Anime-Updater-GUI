@@ -26,14 +26,25 @@ class SettingsView extends StatefulWidget {
 }
 
 class _SettingsViewState extends State<SettingsView> {
-  final TextEditingController _folderController =
-      TextEditingController(text: 'D:/Anime/Animepahe_Library');
+  /// Controller managing the anime library directory text input field.
+  final TextEditingController _folderController = TextEditingController(text: 'D:/Anime/Animepahe_Library');
+
+  /// Controller managing the ignored items text input field.
   final TextEditingController _ignoreInputController = TextEditingController();
 
+  /// Selected preferred resolution option.
   String _selectedQuality = '1080p';
+
+  /// Selected preferred audio track option.
   String _selectedAudio = 'Subbed';
+
+  /// Download progress value of the AI parser model (0.0 to 1.0).
   double _modelDownloadProgress = 0.0;
+
+  /// Current status message label describing AI parser model installation.
   String _modelStatusLabel = 'Idle (Model Needed)';
+
+  /// Whether the AI parser model download subprocess is actively running.
   bool _isDownloadingModel = false;
 
   static const List<String> _qualityOptions = <String>[
@@ -131,19 +142,19 @@ class _SettingsViewState extends State<SettingsView> {
     });
 
     SubprocessService.instance.downloadAiParserModel(
-      onProgress: (double p) {
+      onProgress: (double progress) {
         if (mounted) {
           setState(() {
-            _modelDownloadProgress = p;
-            _modelStatusLabel = 'Downloading (${(p * 100).toInt()}%)';
+            _modelDownloadProgress = progress;
+            _modelStatusLabel = 'Downloading (${(progress * 100).toInt()}%)';
           });
         }
       },
-      onError: (String err) {
+      onError: (String errorMessage) {
         if (mounted) {
           setState(() {
             _isDownloadingModel = false;
-            _modelStatusLabel = 'Error: $err';
+            _modelStatusLabel = 'Error: $errorMessage';
           });
         }
       },
@@ -676,7 +687,9 @@ class _SettingsViewState extends State<SettingsView> {
   }
 }
 
+/// Internal segmented pill button used for quality and audio selections.
 class _QualityPillButton extends StatefulWidget {
+  /// Creates a [_QualityPillButton] widget.
   const _QualityPillButton({
     required this.label,
     required this.isSelected,
@@ -684,9 +697,16 @@ class _QualityPillButton extends StatefulWidget {
     this.tokens,
   });
 
+  /// Display text label for this option.
   final String label;
+
+  /// Whether this option is currently selected.
   final bool isSelected;
+
+  /// Callback executed when this option is selected.
   final VoidCallback onTap;
+
+  /// Optional active theme color tokens.
   final AppColorTokens? tokens;
 
   @override
@@ -694,6 +714,7 @@ class _QualityPillButton extends StatefulWidget {
 }
 
 class _QualityPillButtonState extends State<_QualityPillButton> {
+  /// Whether the pointer is hovering over this button.
   bool _isHovered = false;
 
   @override

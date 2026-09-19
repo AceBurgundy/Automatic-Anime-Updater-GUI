@@ -232,10 +232,16 @@ class TasksView extends StatefulWidget {
 }
 
 class _TasksViewState extends State<TasksView> {
+  /// Controller managing the text input of the search filter.
   final TextEditingController _searchController = TextEditingController();
+
+  /// Currently active search query filter string.
   String _searchQuery = '';
+
+  /// Set of task IDs that are currently expanded to display detailed metadata.
   final Set<String> _expandedTaskIds = <String>{};
 
+  /// Fallback demo tasks displayed when no live tasks are active.
   static const List<TaskItemData> _demoTasks = <TaskItemData>[
     TaskItemData(
       id: 'task_1',
@@ -310,6 +316,7 @@ class _TasksViewState extends State<TasksView> {
     super.dispose();
   }
 
+  /// Toggles the expansion state of the task item identified by [id].
   void _toggleExpanded(String id) {
     setState(() {
       if (_expandedTaskIds.contains(id)) {
@@ -451,7 +458,9 @@ class _TasksViewState extends State<TasksView> {
   }
 }
 
+/// Internal card widget rendering an individual episode processing task.
 class _TaskItemCard extends StatefulWidget {
+  /// Creates a [_TaskItemCard] widget.
   const _TaskItemCard({
     required this.task,
     required this.isExpanded,
@@ -459,9 +468,16 @@ class _TaskItemCard extends StatefulWidget {
     this.tokens,
   });
 
+  /// Associated task item model.
   final TaskItemData task;
+
+  /// Whether the card is currently expanded showing details.
   final bool isExpanded;
+
+  /// Callback executed when toggling the expanded metadata drawer.
   final VoidCallback onToggleExpand;
+
+  /// Optional active theme color tokens.
   final AppColorTokens? tokens;
 
   @override
@@ -469,7 +485,10 @@ class _TaskItemCard extends StatefulWidget {
 }
 
 class _TaskItemCardState extends State<_TaskItemCard> {
+  /// Whether the card is currently hovered.
   bool _isHovered = false;
+
+  /// Whether the expandable toggle arrow icon is currently hovered.
   bool _isArrowHovered = false;
 
   @override
