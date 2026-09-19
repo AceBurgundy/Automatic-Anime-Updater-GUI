@@ -5,7 +5,15 @@ from shutil import rmtree
 from tempfile import mkdtemp
 from time import perf_counter, time as current_timestamp
 from unittest import TestCase, main as unittest_main
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+
+from config import STALL_TIMEOUT_SECONDS
+from constants import (
+    DEFAULT_STALL_TIMEOUT_SECONDS,
+    MIN_STALL_TIMEOUT_SECONDS,
+    MAX_STALL_TIMEOUT_SECONDS,
+)
+
 
 from PIL import Image
 
@@ -605,6 +613,40 @@ class TestAnimeRefresherComponents(TestCase):
             self.assertEqual(m4, "https://animepahe.pw")
 
         asyncio_run(run_rotation_test())
+
+    def test_stall_timeout_configuration(self) -> None:
+        """
+        Verify that stall timeout constants and environment configuration fall within bounds.
+        """
+        self.assertEqual(DEFAULT_STALL_TIMEOUT_SECONDS, 45)
+        self.assertEqual(MIN_STALL_TIMEOUT_SECONDS, 30)
+        self.assertEqual(MAX_STALL_TIMEOUT_SECONDS, 60)
+        self.assertGreaterEqual(STALL_TIMEOUT_SECONDS, 30)
+        self.assertLessEqual(STALL_TIMEOUT_SECONDS, 60)
+
+    def test_resilient_downloader_stall_watchdog(self) -> None:
+        """
+        Verify that ResilientDownloader cleanly handles stream stalls and purges partial files.
+        """
+        downloader: ResilientDownloader = ResilientDownloader(temp_dir=self.temp_download_dir)
+        target_directory: Path = self.test_dir / "target"
+        target_directory.mkdir(parents=True, exist_ok=True)
+        filename: str = "Stalled_Download - 01.mp4"
+
+        with patch("httpx.Client.stream") as mock_stream:
+            from httpx import ReadTimeout
+
+            mock_stream.side_effect = ReadTimeout("Inactivity timeout: 0 bytes received")
+            result: bool = downloader.download_file(
+                url="https://cdn.example.com/stalled.mp4",
+                target_dir=target_directory,
+                final_filename=filename,
+                stall_timeout=1.0,
+            )
+            self.assertFalse(result)
+            partial_path: Path = downloader.get_temp_path(filename)
+            self.assertFalse(partial_path.exists())
+            self.assertFalse((target_directory / filename).exists())
 
 
 if __name__ == "__main__":
