@@ -8,7 +8,7 @@ from time import time as current_timestamp
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote as url_quote, urljoin
 
-from httpx import AsyncClient as HttpAsyncClient
+from httpx import AsyncClient as HttpAsyncClient, Timeout as HttpTimeout
 
 
 from thefuzz import fuzz
@@ -39,12 +39,21 @@ from constants import (
     DEFAULT_PREFERRED_RESOLUTION,
     VALID_RESOLUTIONS,
     RESOLUTION_PRIORITY_MAP,
+    DEFAULT_STALL_TIMEOUT_SECONDS,
 )
 from core.ai_helper import AIHelper
 from core.state_manager import StateManager
 
 
 logger: Logger = getLogger("anime_refresher.scraper")
+
+
+class DownloadStalledError(Exception):
+    """
+    Exception raised when a media stream receives zero bytes for the stall timeout threshold.
+    """
+    pass
+
 
 @dataclass
 class AnimepaheItem:
@@ -1081,13 +1090,38 @@ class AnimepaheScraper:
         play_url: str,
         temp_target_file: Path,
         preferred_resolution: Optional[str] = None,
-        progress_callback: Optional[Callable[[float, int, int, float], None]] = None
+        progress_callback: Optional[Callable[[float, int, int, float], None]] = None,
+        stall_timeout: float = float(DEFAULT_STALL_TIMEOUT_SECONDS),
     ) -> bool:
         """
-        Resolves stream and downloads video directly into temp_target_file using the browser session.
-        Guarantees 100% authorization and cookie alignment with Kwik / CDN.
+        Resolve streaming source and download media into a temporary file using chunk streaming.
+
+        Stream utilizes an inactivity/stall watchdog that triggers only if zero bytes arrive
+        for the duration of stall_timeout, avoiding fixed wall-clock timeouts.
+
+        Parameters
+        ----------
+        anime_title : str
+            Title of the anime series.
+        episode_num : int
+            Episode sequence number.
+        play_url : str
+            Episode player or redirect URL.
+        temp_target_file : Path
+            Destination temporary file path.
+        preferred_resolution : Optional[str], default=None
+            Requested video resolution tier.
+        progress_callback : Optional[Callable[[float, int, int, float], None]], default=None
+            Callback function invoked with progress percentage, downloaded bytes, total bytes, speed mbps.
+        stall_timeout : float, default=DEFAULT_STALL_TIMEOUT_SECONDS
+            Maximum duration in seconds to wait for subsequent chunk packets before aborting.
+
+        Returns
+        -------
+        bool
+            True if the episode was completely downloaded and verified, False otherwise.
         """
-        page = await self._create_page()
+        page: Page = await self._create_page()
         try:
             logger.info(f"Resolving download stream for '{anime_title}' Ep {episode_num}: {play_url}")
             page, _ = await self._safe_goto(play_url, wait_until="domcontentloaded", timeout=35000)
@@ -1095,75 +1129,92 @@ class AnimepaheScraper:
             await self.jitter(1.0, 2.0)
 
             # Wait for and click #downloadMenu button to open #pickDownload
-            btn = None
+            menu_button = None
             for _ in range(2):
                 try:
-                    btn = await page.wait_for_selector("#downloadMenu, button.dropdown-toggle, .download", timeout=18000)
-                    if btn:
+                    menu_button = await page.wait_for_selector(
+                        "#downloadMenu, button.dropdown-toggle, .download",
+                        timeout=18000,
+                    )
+                    if menu_button:
                         break
                 except Exception:
                     await self._handle_cloudflare_if_present(page, max_wait=10)
 
-            if not btn:
-                logger.error(f"Download menu button not found on play page for '{anime_title}' Ep {episode_num}")
+            if not menu_button:
+                logger.error(
+                    f"Download menu button not found on play page for '{anime_title}' Ep {episode_num}"
+                )
                 return False
 
             logger.debug("Clicking #downloadMenu dropdown button...")
             try:
-                await btn.click()
-            except Exception as click_err:
-                logger.debug(f"Direct click on #downloadMenu failed ({click_err}). Dispatching JS click...")
-                await page.evaluate('''() => {
-                    const el = document.querySelector('#downloadMenu, button.dropdown-toggle, .download');
-                    if (el) el.click();
-                }''')
-            
+                await menu_button.click()
+            except Exception as click_error:
+                logger.debug(
+                    f"Direct click on #downloadMenu failed ({click_error}). Dispatching JS click..."
+                )
+                await page.evaluate(
+                    """() => {
+                    const dropdown_element = document.querySelector('#downloadMenu, button.dropdown-toggle, .download');
+                    if (dropdown_element) dropdown_element.click();
+                }"""
+                )
+
             # Poll for #pickDownload options with JS click fallback
-            options = []
-            for poll_idx in range(8):
+            download_options: List[Dict[str, str]] = []
+            for poll_index in range(8):
                 await asyncio_sleep(0.75)
-                options = await page.evaluate(r'''() => {
+                download_options = await page.evaluate(
+                    r"""() => {
                     const containers = document.querySelectorAll('#pickDownload, .dropdown-menu');
-                    const res = [];
-                    containers.forEach(c => {
-                        c.querySelectorAll('a').forEach(a => {
-                            const text = a.textContent.trim();
-                            const href = a.getAttribute('href');
+                    const results = [];
+                    containers.forEach(container => {
+                        container.querySelectorAll('a').forEach(anchor => {
+                            const text = anchor.textContent.trim();
+                            const href = anchor.getAttribute('href');
                             if (text && href && (href.startsWith('http') || href.includes('pahe.win') || href.includes('/f/') || /\d+p/.test(text))) {
-                                res.push({ text: text, href: href });
+                                results.push({ text: text, href: href });
                             }
                         });
                     });
-                    return res;
-                }''')
-                if options:
+                    return results;
+                }"""
+                )
+                if download_options:
                     break
-                if poll_idx == 3:
-                    logger.debug("Dropdown options not yet visible. Dispatching synthetic MouseEvent click to #downloadMenu...")
-                    await page.evaluate('''() => {
-                        const el = document.querySelector('#downloadMenu, button.dropdown-toggle, .download');
-                        if (el) {
-                            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                if poll_index == 3:
+                    logger.debug(
+                        "Dropdown options not yet visible. Dispatching synthetic MouseEvent click to #downloadMenu..."
+                    )
+                    await page.evaluate(
+                        """() => {
+                        const dropdown_element = document.querySelector('#downloadMenu, button.dropdown-toggle, .download');
+                        if (dropdown_element) {
+                            dropdown_element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
                         }
-                    }''')
+                    }"""
+                    )
 
-            if not options:
-                logger.warning(f"No download options found in dropdown for '{anime_title}' Ep {episode_num}")
+            if not download_options:
+                logger.warning(
+                    f"No download options found in dropdown for '{anime_title}' Ep {episode_num}"
+                )
                 await self._reset_page()
                 return False
 
             # Select target option using audio preference and resolution rules
             target_option = self._select_preferred_source(
-                options=options,
+                options=download_options,
                 anime_title=anime_title,
                 episode_num=episode_num,
-                preferred_resolution=preferred_resolution
+                preferred_resolution=preferred_resolution,
             )
             if not target_option:
                 await self._reset_page()
                 return False
 
-            target_href = target_option["href"]
+            target_href: str = target_option["href"]
             logger.info(f"Selected resolution link: '{target_option['text']}' -> {target_href}")
 
             # Navigate to redirect page
@@ -1173,79 +1224,242 @@ class AnimepaheScraper:
             await self.jitter(1.0, 2.0)
 
             # Extract kwik link
-            current_page_url = page.url or ""
-            html_content = await page.content()
-            m = re_search(r'https?://(?:kwik\.[a-z]+|pahe\.win)/f/([a-zA-Z0-9]+)', html_content)
-            kwik_url = m.group(0) if m else current_page_url
+            current_page_url: str = page.url or ""
+            html_content: str = await page.content()
+            regex_match: Optional[Match[str]] = re_search(
+                r"https?://(?:kwik\.[a-z]+|pahe\.win)/f/([a-zA-Z0-9]+)", html_content
+            )
+            kwik_url: str = regex_match.group(0) if regex_match else current_page_url
 
             # Only perform explicit navigation if we are not already on the destination Kwik page
-            if ("kwik" in kwik_url or "/f/" in kwik_url) and kwik_url != current_page_url and "/f/" not in current_page_url:
+            if (
+                ("kwik" in kwik_url or "/f/" in kwik_url)
+                and kwik_url != current_page_url
+                and "/f/" not in current_page_url
+            ):
                 logger.debug(f"Navigating to Kwik page: {kwik_url}")
-                page, _ = await self._safe_goto(kwik_url, wait_until="domcontentloaded", timeout=35000)
+                page, _ = await self._safe_goto(
+                    kwik_url, wait_until="domcontentloaded", timeout=35000
+                )
                 await self._handle_cloudflare_if_present(page, max_wait=45)
                 await self.jitter(1.0, 2.0)
             else:
                 await self._handle_cloudflare_if_present(page, max_wait=45)
 
+            temporary_partial_file: Path = temp_target_file.with_name(
+                f"{temp_target_file.name}.partial"
+            )
+            if temporary_partial_file.exists():
+                temporary_partial_file.unlink()
             if temp_target_file.exists():
                 temp_target_file.unlink()
 
-            logger.info(f"Triggering browser download to temporary path: {temp_target_file}")
-            dl_selector = "form button, button[type='submit'], .button.is-success, .button.is-primary, a.button, input[type='submit'], button:has-text('Download'), .btn-download, button"
-            
-            dl_submit = None
+            logger.info(
+                f"Triggering browser download resolution for temporary target: {temp_target_file}"
+            )
+            download_selector: str = (
+                "form button, button[type='submit'], .button.is-success, .button.is-primary, "
+                "a.button, input[type='submit'], button:has-text('Download'), .btn-download, button"
+            )
+
+            submit_element = None
             try:
-                dl_submit = await page.wait_for_selector(dl_selector, timeout=25000)
+                submit_element = await page.wait_for_selector(download_selector, timeout=25000)
             except Exception:
-                logger.debug("Download selector not immediately visible. Checking Cloudflare clearance and DOM state...")
+                logger.debug(
+                    "Download selector not immediately visible. Checking Cloudflare clearance and DOM state..."
+                )
                 await self._handle_cloudflare_if_present(page, max_wait=15)
                 try:
-                    dl_submit = await page.wait_for_selector(dl_selector, timeout=10000)
+                    submit_element = await page.wait_for_selector(download_selector, timeout=10000)
                 except Exception:
                     pass
 
             # Fallback: check if form exists even if button isn't directly matched
-            if not dl_submit:
-                has_form = await page.evaluate('''() => Boolean(document.querySelector('form'))''')
+            if not submit_element:
+                has_form: bool = await page.evaluate(
+                    """() => Boolean(document.querySelector('form'))"""
+                )
                 if has_form:
                     logger.debug("Found form in DOM, acquiring submit element...")
-                    dl_submit = await page.query_selector("form button, form input[type='submit'], form")
+                    submit_element = await page.query_selector(
+                        "form button, form input[type='submit'], form"
+                    )
 
-            if not dl_submit:
+            if not submit_element:
                 logger.error("Download submit button not found on Kwik page")
                 return False
 
-            start_dl_time = current_timestamp()
+            start_download_time: float = current_timestamp()
             async with page.expect_download(timeout=90000) as download_info:
                 try:
-                    await dl_submit.click()
+                    await submit_element.click()
                 except Exception:
-                    await page.evaluate("() => { const f = document.querySelector('form'); if (f) f.submit(); }")
+                    await page.evaluate(
+                        "() => { const form = document.querySelector('form'); if (form) form.submit(); }"
+                    )
             download = await download_info.value
 
-            logger.info(f"Browser download streaming from CDN: {download.url[:80]}...")
-            
-            # Save download to temp target file
-            await download.save_as(str(temp_target_file))
+            cdn_url: str = download.url
+            logger.info(f"Resolved CDN download link: {cdn_url[:80]}...")
 
-            elapsed = current_timestamp() - start_dl_time
-            if temp_target_file.exists() and temp_target_file.stat().st_size > 1024 * 1024:
-                file_size = temp_target_file.stat().st_size
-                file_mb = file_size / (1024 * 1024)
-                speed = file_mb / elapsed if elapsed > 0 else 0
-                logger.info(f"Download complete: {file_mb:.2f} MB in {elapsed:.1f}s ({speed:.2f} MB/s)")
-                
-                if progress_callback:
-                    progress_callback(100.0, file_size, file_size, speed)
-                return True
-            else:
-                logger.error(f"Download finished but file {temp_target_file} is missing or too small")
-                if temp_target_file.exists():
-                    temp_target_file.unlink()
-                return False
+            browser_cookies = await self.context.cookies()
+            cookie_dictionary: Dict[str, str] = {
+                cookie["name"]: cookie["value"] for cookie in browser_cookies
+            }
+            user_agent_header: str = await page.evaluate("() => navigator.userAgent")
+            referer_header: str = page.url or "https://kwik.cx/"
+            request_headers: Dict[str, str] = {
+                "User-Agent": user_agent_header,
+                "Referer": referer_header,
+                "Accept": "*/*",
+            }
 
-        except Exception as e:
-            logger.error(f"Failed to download '{anime_title}' Ep {episode_num}: {e}", exc_info=True)
+            stream_succeeded: bool = False
+            download_cancelled: bool = False
+            client_timeout: HttpTimeout = HttpTimeout(
+                connect=30.0,
+                read=stall_timeout,
+                write=None,
+                pool=None,
+            )
+
+            try:
+                async with HttpAsyncClient(
+                    headers=request_headers,
+                    cookies=cookie_dictionary,
+                    follow_redirects=True,
+                    timeout=client_timeout,
+                ) as http_client:
+                    async with http_client.stream("GET", cdn_url) as stream_response:
+                        if stream_response.status_code == 200:
+                            download_cancelled = True
+                            try:
+                                await download.cancel()
+                            except Exception:
+                                pass
+
+                            total_bytes: int = int(
+                                stream_response.headers.get("content-length", 0)
+                            )
+                            downloaded_bytes: int = 0
+                            last_progress_emit_time: float = start_download_time
+
+                            with open(temporary_partial_file, "wb") as file_handle:
+                                async for chunk in stream_response.aiter_bytes(chunk_size=262144):
+                                    if not chunk:
+                                        continue
+                                    file_handle.write(chunk)
+                                    downloaded_bytes += len(chunk)
+                                    now_time: float = current_timestamp()
+                                    elapsed_seconds: float = now_time - start_download_time
+                                    speed_mbps: float = (
+                                        (downloaded_bytes / (1024.0 * 1024.0)) / elapsed_seconds
+                                        if elapsed_seconds > 0.0
+                                        else 0.0
+                                    )
+                                    progress_percentage: float = (
+                                        (downloaded_bytes / total_bytes * 100.0)
+                                        if total_bytes > 0
+                                        else 0.0
+                                    )
+                                    if progress_callback and (
+                                        now_time - last_progress_emit_time >= 0.5
+                                    ):
+                                        progress_callback(
+                                            progress_percentage,
+                                            downloaded_bytes,
+                                            total_bytes,
+                                            speed_mbps,
+                                        )
+                                        last_progress_emit_time = now_time
+
+                            if (
+                                temporary_partial_file.exists()
+                                and temporary_partial_file.stat().st_size > 1024 * 1024
+                            ):
+                                temporary_partial_file.replace(temp_target_file)
+                                stream_succeeded = True
+                                final_elapsed: float = current_timestamp() - start_download_time
+                                final_bytes: int = temp_target_file.stat().st_size
+                                final_megabytes: float = final_bytes / (1024.0 * 1024.0)
+                                final_speed: float = (
+                                    final_megabytes / final_elapsed
+                                    if final_elapsed > 0.0
+                                    else 0.0
+                                )
+                                logger.info(
+                                    f"Direct stream download complete: {final_megabytes:.2f} MB in {final_elapsed:.1f}s ({final_speed:.2f} MB/s)"
+                                )
+                                if progress_callback:
+                                    progress_callback(
+                                        100.0,
+                                        final_bytes,
+                                        final_bytes,
+                                        final_speed,
+                                    )
+                                return True
+                            else:
+                                logger.error(
+                                    f"Stream finished but file {temporary_partial_file} is missing or too small."
+                                )
+                        else:
+                            logger.warning(
+                                f"Direct stream received HTTP status {stream_response.status_code}. "
+                                "Falling back to browser native download mechanism..."
+                            )
+            except Exception as stream_error:
+                logger.warning(
+                    f"Direct stream aborted or encountered error: {stream_error}. "
+                    "Checking browser native download fallback..."
+                )
+                if temporary_partial_file.exists():
+                    try:
+                        temporary_partial_file.unlink()
+                    except Exception:
+                        pass
+
+            if not stream_succeeded and not download_cancelled:
+                logger.info("Engaging browser native download handler fallback...")
+                await download.save_as(str(temp_target_file))
+                elapsed_native: float = current_timestamp() - start_download_time
+                if (
+                    temp_target_file.exists()
+                    and temp_target_file.stat().st_size > 1024 * 1024
+                ):
+                    native_size: int = temp_target_file.stat().st_size
+                    native_megabytes: float = native_size / (1024.0 * 1024.0)
+                    native_speed: float = (
+                        native_megabytes / elapsed_native
+                        if elapsed_native > 0.0
+                        else 0.0
+                    )
+                    logger.info(
+                        f"Browser native download complete: {native_megabytes:.2f} MB in {elapsed_native:.1f}s ({native_speed:.2f} MB/s)"
+                    )
+                    if progress_callback:
+                        progress_callback(
+                            100.0,
+                            native_size,
+                            native_size,
+                            native_speed,
+                        )
+                    return True
+                else:
+                    logger.error(
+                        f"Browser native download finished but file {temp_target_file} is missing or too small."
+                    )
+                    if temp_target_file.exists():
+                        temp_target_file.unlink()
+                    return False
+
+            return False
+
+        except Exception as error:
+            logger.error(
+                f"Failed to download '{anime_title}' Ep {episode_num}: {error}",
+                exc_info=True,
+            )
             if temp_target_file.exists():
                 try:
                     temp_target_file.unlink()
