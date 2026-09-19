@@ -54,6 +54,7 @@ class KyaaApp extends StatefulWidget {
 }
 
 class _KyaaAppState extends State<KyaaApp> {
+  /// Controller managing theme state and reactive palette notifications.
   late final ThemeController _themeController;
 
   @override
@@ -104,6 +105,7 @@ class AppWindowScaffold extends StatefulWidget {
 }
 
 class _AppWindowScaffoldState extends State<AppWindowScaffold> {
+  /// Currently active application view tab.
   late AppTab _activeTab;
 
   @override
