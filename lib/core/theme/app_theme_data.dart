@@ -5,8 +5,10 @@ import 'app_palettes.dart';
 /// Builder creating M3 ThemeData configured with Google Sans, universal pointer cursors,
 /// and smooth desktop hover styling matching single.html.
 class AppThemeData {
+  /// Private constructor to prevent direct instantiation.
   AppThemeData._();
 
+  /// Internal cache storing constructed [ThemeData] instances per palette.
   static final Map<AppPaletteOption, ThemeData> _themeCache = <AppPaletteOption, ThemeData>{};
 
   /// Creates or retrieves a cached configured [ThemeData] instance corresponding to the given [paletteOption].

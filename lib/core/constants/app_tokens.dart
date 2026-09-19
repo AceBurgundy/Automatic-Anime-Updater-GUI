@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Design tokens and structural constants matching the single.html specification.
 class AppTokens {
+  /// Private constructor to prevent direct instantiation.
   AppTokens._();
 
   /// Default application window width in pixels.

@@ -214,6 +214,7 @@ class AppThemeDefinition {
 
 /// Registry of legacy theme definitions.
 class AppThemes {
+  /// Private constructor to prevent direct instantiation.
   AppThemes._();
 
   /// Solar Flare theme definition.

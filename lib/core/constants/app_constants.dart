@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Application-wide constants, default dimensions, and script paths.
 class AppConstants {
+  /// Private constructor to prevent direct instantiation.
   AppConstants._();
 
   /// Main application title.
@@ -17,8 +18,7 @@ class AppConstants {
   static const String modelsDirPath = 'assets/models';
 
   /// Subprocess status description message.
-  static const String parserStatusMessage =
-      'An AI model is needed to ensure that the app works smoothly.';
+  static const String parserStatusMessage = 'An AI model is needed to ensure that the app works smoothly.';
 
   /// Button label when parser download is idle.
   static const String parserButtonIdle = 'Download AI Model';

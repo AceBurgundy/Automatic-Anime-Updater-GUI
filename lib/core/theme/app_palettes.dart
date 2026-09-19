@@ -14,6 +14,7 @@ enum AppPaletteOption {
   /// Mango yellow theme option.
   sunsetAmber('Mango Yellow', 'sunset');
 
+  /// Creates an [AppPaletteOption] enumeration value.
   const AppPaletteOption(this.displayName, this.key);
 
   /// Human-readable display label.
@@ -151,6 +152,7 @@ class AppColorTokens {
 
 /// Palette repository mapping each [AppPaletteOption] to its [AppColorTokens].
 class AppPalettes {
+  /// Private constructor to prevent direct instantiation.
   AppPalettes._();
 
   /// Default Purple Iris palette tokens with neutral lighter black surfaces and purple accents.

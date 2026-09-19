@@ -8,6 +8,7 @@ class ThemeController extends ChangeNotifier {
   ThemeController({AppPaletteOption initialPalette = AppPaletteOption.sunsetAmber})
       : _activePalette = initialPalette;
 
+  /// Currently active internal palette option.
   AppPaletteOption _activePalette;
 
   /// Currently selected [AppPaletteOption].
