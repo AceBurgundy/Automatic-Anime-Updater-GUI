@@ -1,7 +1,7 @@
 from json import load as json_load
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 logger: Logger = getLogger("anime_refresher.safety")
 
@@ -9,12 +9,27 @@ SNAPSHOT_JSON: Path = Path(r"D:\Conversations\anime-refresher\anime_unwatched_sn
 
 
 class SafetyViolationError(Exception):
-    """Raised when an operation attempts to write, edit, rename, or delete a snapshot file."""
+    """
+    Exception raised when an operation attempts to write, edit, rename, or delete a snapshot file.
+    """
 
     pass
 
 
 class SafetyGuard:
+    """
+    Programmatic file system guard preventing overwriting or tampering with protected anime files.
+
+    Attributes
+    ----------
+    snapshot_path : Path
+        Path to the JSON snapshot file containing protected file basenames and relative paths.
+    _protected_files : Set[str]
+        Set of protected file paths and lowercase basenames.
+    _instance : Optional[SafetyGuard]
+        Singleton instance reference if applicable.
+    """
+
     _instance: Optional["SafetyGuard"] = None
     _protected_files: Set[str] = set()
     snapshot_path: Path
@@ -29,6 +44,7 @@ class SafetyGuard:
             Path to the JSON snapshot file containing protected file basenames and relative paths.
         """
         self.snapshot_path: Path = snapshot_path
+        self._protected_files: Set[str] = set()
         self._load_snapshot()
 
     def _load_snapshot(self) -> None:
@@ -46,7 +62,7 @@ class SafetyGuard:
                 snapshot_data: Dict[str, Any] = json_load(file_handle)
 
             for relative_root, content in snapshot_data.items():
-                file_list: list = content.get("files", [])
+                file_list: List[str] = content.get("files", [])
                 for filename in file_list:
                     relative_path: str = (
                         (Path(relative_root) / filename).as_posix().lower()

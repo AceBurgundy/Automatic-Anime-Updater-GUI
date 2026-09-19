@@ -11,6 +11,21 @@ logger: Logger = getLogger("anime_refresher.scanner")
 
 @dataclass
 class AnimeLocalState:
+    """
+    Data container representing the on-disk state of an individual anime folder.
+
+    Attributes
+    ----------
+    folder_name : str
+        Directory basename of the series.
+    folder_path : Path
+        Absolute path to the anime directory.
+    existing_files : List[str]
+        List of all existing media file basenames.
+    downloaded_episodes : Set[int]
+        Set of episode integers detected locally.
+    """
+
     folder_name: str
     folder_path: Path
     existing_files: List[str]
@@ -19,6 +34,21 @@ class AnimeLocalState:
 
 @dataclass
 class AnimeFolder:
+    """
+    Represents a scanned local anime folder with parsed video file inventory.
+
+    Attributes
+    ----------
+    name : str
+        Directory basename of the series.
+    path : Path
+        Absolute path to the series folder.
+    video_files : List[Path]
+        List of absolute paths to video files contained within the folder.
+    episode_numbers : Set[int]
+        Set of parsed episode sequence numbers found locally.
+    """
+
     name: str
     path: Path
     video_files: List[Path]
@@ -26,6 +56,21 @@ class AnimeFolder:
 
 
 class LocalScanner:
+    """
+    Filesystem scanner that catalogs anime series directories and parses local episodes.
+
+    Attributes
+    ----------
+    target_dir : Path
+        Base directory containing local anime series folders.
+    ai_helper : AIHelper
+        Helper instance used for title cleaning and episode number extraction.
+    ignored : List[str]
+        Raw list of excluded folder or file pattern strings.
+    _normalized_ignored : Set[str]
+        Set of normalized, lowercase exclusion patterns for fast matching.
+    """
+
     target_dir: Path
     ai_helper: AIHelper
     ignored: List[str]

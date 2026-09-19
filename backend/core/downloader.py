@@ -15,6 +15,15 @@ logger: Logger = getLogger("anime_refresher.downloader")
 
 
 class ResilientDownloader:
+    """
+    Streaming HTTP downloader with chunked transfers, resume capabilities, and SafetyGuard validation.
+
+    Attributes
+    ----------
+    temp_dir : Path
+        Staging directory for in-progress partial video downloads.
+    """
+
     temp_dir: Path
 
     def __init__(self, temp_dir: Path = TEMP_DIR) -> None:
@@ -252,7 +261,7 @@ class ResilientDownloader:
                                             f"Progress: {downloaded_bytes / (1024 * 1024):.1f} MB downloaded "
                                             f"@ {speed:.2f} MB/s"
                                         )
-                                    last_log_time = now
+                                    last_log_time: float = now
 
             duration: float = current_timestamp() - start_time
             file_size_megabytes: float = (

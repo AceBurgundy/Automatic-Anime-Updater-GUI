@@ -10,6 +10,17 @@ logger: Logger = getLogger("anime_refresher.state")
 
 
 class StateManager:
+    """
+    Persistent state manager storing anime retry attempts and run history.
+
+    Attributes
+    ----------
+    state_file : Path
+        File system path to the state JSON persistence file.
+    data : Dict[str, Any]
+        In-memory dictionary cache of state information.
+    """
+
     state_file: Path
     data: Dict[str, Any]
 

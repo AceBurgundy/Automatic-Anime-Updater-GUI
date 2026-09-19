@@ -13,6 +13,31 @@ logger: Logger = getLogger("anime_refresher.reporter")
 
 @dataclass
 class AnimeErrorEntry:
+    """
+    Data container representing a single recorded pipeline error or title mismatch.
+
+    Attributes
+    ----------
+    folder_name : str
+        Local directory name of the anime.
+    search_query : str
+        Search phrase dispatched to Animepahe.
+    closest_candidate : str
+        Best matched catalog candidate title found.
+    similarity_score : float
+        Calculated string similarity ratio (0.0 to 100.0).
+    error_type : str
+        Category identifier for the error.
+    human_message : str
+        Readable diagnostic description.
+    suggested_action : str
+        Recommended user remediation step.
+    animepahe_search_url : str
+        Direct hyperlink to the mirror search page.
+    timestamp : str
+        ISO 8601 UTC timestamp of occurrence.
+    """
+
     folder_name: str
     search_query: str
     closest_candidate: str
@@ -25,12 +50,21 @@ class AnimeErrorEntry:
 
 
 class ErrorReporter:
-    """Manages collection of automation errors and renders an interactive modern errors.html report."""
+    """
+    Manages collection of automation errors and renders an interactive modern errors.html report.
+
+    Attributes
+    ----------
+    errors : List[AnimeErrorEntry]
+        In-memory sequence of accumulated error records.
+    """
 
     errors: List[AnimeErrorEntry]
 
     def __init__(self) -> None:
-        """Initialize an empty ErrorReporter collection."""
+        """
+        Initialize an empty ErrorReporter collection.
+        """
         self.errors: List[AnimeErrorEntry] = []
 
     def clear(self) -> None:

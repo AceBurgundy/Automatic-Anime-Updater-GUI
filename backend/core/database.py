@@ -36,6 +36,11 @@ class DatabaseManager:
         ------
         Connection
             Active SQLite connection configured with WAL journal mode and Row factory.
+
+        Returns
+        -------
+        Generator[Connection, None, None]
+            Generator context manager yielding an open database connection.
         """
         connection: Connection = sqlite3_connect(str(self.db_path), timeout=30.0)
         connection.row_factory = Row
@@ -375,9 +380,8 @@ class DatabaseManager:
                 "SELECT id FROM anime_series WHERE folder_path = ?", (normalized_path,)
             ).fetchone()
 
-            series_id: int
             if existing:
-                series_id = int(existing["id"])
+                series_id: int = int(existing["id"])
                 connection.execute(
                     """
                     UPDATE anime_series
@@ -398,7 +402,7 @@ class DatabaseManager:
                 """,
                     (normalized_path, folder_name, site_title, site_session),
                 )
-                series_id = int(cursor.lastrowid)
+                series_id: int = int(cursor.lastrowid)
 
             connection.commit()
             return series_id
