@@ -568,14 +568,17 @@ class AnimepaheScraper:
             except Exception:
                 pass
 
+            is_pahe_decoy_title: bool = (
+                ("pahe." in current_url or "pahewin" in current_url) and "Pahewin" in title
+            )
+
             is_cf_challenge: bool = (
                 not title_clean
                 or "Just a moment" in title
                 or "Performing security" in title
                 or "__cf_chl" in current_url
-                or "Attention Required" in title
+                or (("Attention Required" in title or "Cloudflare" in title) and not is_pahe_decoy_title)
                 or "Turnstile" in title
-                or "Cloudflare" in title
                 or "Verify you are human" in title
                 or "Security Check" in title
                 or "502" in title
@@ -634,14 +637,19 @@ class AnimepaheScraper:
             title: str = await page.title()
             title_clean: str = title.strip()
             current_url: str = page.url
+            is_pahe_decoy_title_final: bool = (
+                ("pahe." in current_url or "pahewin" in current_url) and "Pahewin" in title
+            )
             is_valid: bool = (
                 title_clean != ""
                 and "Just a moment" not in title
                 and "Performing security" not in title
                 and "__cf_chl" not in current_url
-                and "Attention Required" not in title
+                and (
+                    ("Attention Required" not in title and "Cloudflare" not in title)
+                    or is_pahe_decoy_title_final
+                )
                 and "Turnstile" not in title
-                and "Cloudflare" not in title
                 and "Verify you are human" not in title
             )
             return is_valid
@@ -1486,21 +1494,57 @@ class AnimepaheScraper:
 
             # Follow kwik redirect link
             page, _ = await self._safe_goto(kwik_url, wait_until="commit", timeout=45000)
+            await asyncio_sleep(2.0)
+
+            # Extract destination Kwik URL from redirect wrapper content if present
+            current_page_url: str = page.url or ""
+            html_content: str = await page.content()
+            regex_match: Optional[Match[str]] = re_search(
+                r"https?://(?:kwik\.[a-z]+|pahe\.win)/f/([a-zA-Z0-9]+)",
+                html_content,
+            )
+            destination_kwik_url: str = (
+                regex_match.group(0) if regex_match else current_page_url
+            )
+            if (
+                ("kwik" in destination_kwik_url or "/f/" in destination_kwik_url)
+                and destination_kwik_url != current_page_url
+                and "/f/" not in current_page_url
+            ):
+                logger.debug(
+                    f"Navigating from redirect wrapper to extracted Kwik URL: {destination_kwik_url}"
+                )
+                page, _ = await self._safe_goto(
+                    destination_kwik_url, wait_until="commit", timeout=45000
+                )
+
+            # Handle Cloudflare verification on destination Kwik page
             await self._handle_cloudflare_if_present(page, max_wait=30)
             await self.jitter(1.0, 2.0)
 
-            # Cloudflare Turnstile click resolution on Kwik page
-            await self._click_turnstile_if_present(page)
+            # Ensure page settles on actual Kwik download page
+            for _ in range(15):
+                settle_title: str = await page.title()
+                settle_url: str = page.url or ""
+                if (
+                    "just a moment" not in settle_title.lower()
+                    and not settle_title.startswith("Loading")
+                    and (
+                        "kwik" in settle_url
+                        or "kwik" in settle_title.lower()
+                        or "/f/" in settle_url
+                    )
+                ):
+                    logger.debug(
+                        f"Kwik page settled: Title='{settle_title}', URL='{settle_url[:60]}...'"
+                    )
+                    break
+                await asyncio_sleep(1.0)
 
-            # Ensure page is on actual kwik download domain
-            kwik_title: str = await page.title()
-            kwik_current_url: str = page.url or ""
-            if "kwik" not in kwik_current_url and "kwik" not in kwik_title.lower():
-                logger.debug(
-                    f"Page landed at {kwik_current_url} (Title: '{kwik_title}'). Waiting for kwik redirect..."
-                )
-                await self._handle_cloudflare_if_present(page, max_wait=20)
-                await asyncio_sleep(2.0)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=15000)
+            except Exception:
+                pass
 
             temporary_partial_file: Path = temp_target_file.with_suffix(
                 temp_target_file.suffix + ".part"
